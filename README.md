@@ -16,7 +16,8 @@ In a POSIX shell:
 
 Build code
 ```sh
-g++ --std=c++20 .\tools\reduced_codec.cpp -o ./build/reduced-codec.exe
+mkdir -p build
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
 ```
 Run code
 ```sh
@@ -29,10 +30,11 @@ bash tools/spra-xz.sh encode 5 words/5/153/153-recursive.txt -- -6e > word-n5.sp
 bash tools/spra-xz.sh decode word-n5.spra.xz > restored-n5.txt
 ```
 
-In PowerShell, build with `mingw32-make` and use `cmd /c` for binary-safe redirection:
+In PowerShell, build with MinGW GCC (see docs/reduced_binary.md) and use `cmd /c` for binary-safe redirection:
 
 ```powershell
-mingw32-make reduced-codec
+New-Item -ItemType Directory -Force build | Out-Null
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe
 cmd /c '.\build\reduced-codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
 cmd /c '.\build\reduced-codec.exe encode --bits 6 5 words\5\153\153-recursive.txt > word-n5-six.spra'
 cmd /c '.\build\reduced-codec.exe decode word-n5.spra > restored-n5.txt'
@@ -68,14 +70,14 @@ For example, `123121321` becomes `012010210` and converts back exactly. Folder c
 
 ## Paint waste
 
-[`tools/paint_waste.cpp`](tools/reduced_alphabet.cpp) builds the `paint-waste` tool. It reads a word from standard input, ignores whitespace, and supports `1 <= N <= 13` on a 64-bit platform. Its default labels are `123456789ABCD`; `-z` / `--zero-based` selects `0123456789ABC`. Use the first N characters of the selected alphabet, with uppercase letters.
+[`tools/paint_waste.cpp`](tools/paint_waste.cpp) builds the `paint-waste` tool. It reads a word from standard input, ignores whitespace, and supports `1 <= N <= 13` on a 64-bit platform. Its default labels are `123456789ABCD`; `-z` / `--zero-based` selects `0123456789ABC`. Use the first N characters of the selected alphabet, with uppercase letters.
 
 For each length-`N` window, it marks the final character red if the window contains repeated symbols. It prints the colored word, reduced-alphabet `[depth:index]` pairs (in hexadecimal), and then decimal statistics to stdout. Statistics include length, clean/dirty windows and runs, distinct/missing permutations, and binary `valid_superpermutation` coverage. Use `-s` to print only statistics. See the [full run guide and field definitions](docs/reduced_alphabet.md).
 
 Run these commands from the repository root with a C++20 compiler such as GCC. In PowerShell with MinGW GCC:
 
 ```powershell
-g++ -std=c++20 -O2 tools/reduced_alphabet.cpp -o paint-waste.exe
+g++ -std=c++20 -O2 tools/paint_waste.cpp -o paint-waste.exe
 Get-Content words/5/153/153-recursive.txt | ./paint-waste.exe 5
 ```
 
@@ -114,7 +116,7 @@ Above N=9, the tool always uses statistics-only output. Without `-s`, it asks fo
 On Linux/macOS with GCC:
 
 ```sh
-g++ -std=c++20 -O2 tools/reduced_alphabet.cpp -o paint-waste
+g++ -std=c++20 -O2 tools/paint_waste.cpp -o paint-waste
 ./paint-waste 5 < words/5/153/153-recursive.txt
 ```
 
