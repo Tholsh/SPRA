@@ -1,0 +1,30 @@
+{
+  "files.associations": {
+    "*.tex": "latex"
+  },
+  "latexPreview.latexFontDir": "C:/Users/Theo/AppData/Local/Programs/MiKTeX/fonts",
+  "latex-workshop.latex.build.enableMagicComments": false,
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.latex.outDir": "%DIR%/.latex-build",
+  "latex-workshop.view.pdf.viewer": "tab",
+  "latex-workshop.latex.tools": [
+    {
+      "name": "lualatex",
+      "command": "C:/Users/Theo/AppData/Local/Programs/MiKTeX/miktex/bin/x64/lualatex.exe",
+      "args": [
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-file-line-error",
+        "-output-directory=%OUTDIR%",
+        "%DOC%"
+      ]
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "LuaLaTeX",
+      "tools": ["lualatex"]
+    }
+  ]
+}
