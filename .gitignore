@@ -9,33 +9,11 @@ paint-waste.exe
 *.pdb
 *.ilk
 
-# LaTeX preview output.
-**/.latex-build/
-*.aux
-*.dvi
-*.synctex
-*.synctex.gz
-/docs/n11/improve_halfar/n11_improve_halfar.log
-/boundary-spectral-n11-20261004/**/*.nibbles
-/boundary-spectral-n11-20261004/**/*.i128
-/boundary-spectral-n11-20261004/**/*.u8
-
-# Expanded N=6 collection archives are local working copies.
-/words/6/872/872-nonstandard/
-/words/6/872/872-tahg/
-/words/6/872/872-treelike/
-/words/6/872/872-treelike-slack1/
-
-# Keep N>=9 words compressed; retain lower-N examples, including 6/872/1 and base.
-/words/9/**/*.txt
-/words/1[0-9]/**/*.txt
+# Keep N > 10 superpermutations compressed.
+/words/1[1-9]/**/*.txt
 /words/[2-9][0-9]/**/*.txt
 /words/[1-9][0-9][0-9]*/**/*.txt
-/words/**/*.spra
-/unpacked/
-/unpacked-*/
-superpermutation-9-*.txt
-superpermutation-1[0-9]-*.txt
+superpermutation-1[1-9]-*.txt
 superpermutation-[2-9][0-9]-*.txt
 superpermutation-[1-9][0-9][0-9]*-*.txt
 
