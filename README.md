@@ -6,7 +6,7 @@ This code / corpus repo was meant to be imported as a submodule and used in pers
 
 ## Corpus
 
-[`words/`](words/) groups words by alphabet size, from `5` through `13`, then by word length: `words/N/LENGTH/`. For example, the recursive N=5 word is [`words/5/153/153-recursive.txt`](words/5/153/153-recursive.txt). Through **N=9**, every `.txt` file contains exactly one superpermutation, using one-based labels `123…N`. This is also where Collections retain their own folders inside the length folder, such as `words/6/872/872-treelike/872-00001.txt` (length and source ordinal). Existing individual word filenames are retained. Repeated occurrences from different sources are preserved.
+[`words/`](words/) groups words by alphabet size, from `5` through `14`, then by word length: `words/N/LENGTH/`. For example, the recursive N=5 word is [`words/5/153/153-recursive.txt`](words/5/153/153-recursive.txt). Through **N=9**, every `.txt` file contains exactly one superpermutation, using one-based labels `123…N`. This is also where Collections retain their own folders inside the length folder, such as `words/6/872/872-treelike/872-00001.txt` (length and source ordinal). Existing individual word filenames are retained. Repeated occurrences from different sources are preserved.
 
 ## Reduced-alphabet binary files
 
@@ -42,12 +42,12 @@ Check the exit status before keeping output; errors go to stderr. See the [binar
 
 ## Relabel word files
 
-[`tools/relabel_words.py`](tools/relabel_words.py) converts between zero-based `0123456789ABC` and one-based `123456789ABCD` labels using Python 3.8 or newer. `--to 0` expects one-based input; `--to 1` expects zero-based input. Each uppercase letter is one symbol (`9` becomes `A` when converting to one-based labels). Whitespace, line endings, word length, and filenames are preserved. Optionally use `-n N` to validate the source alphabet size; the default is 13. Only word symbols and ASCII whitespace are accepted.
+[`tools/relabel_words.cpp`](tools/relabel_words.cpp) converts between zero-based `0123456789ABC` and one-based `123456789ABCD` labels. Build it with `g++ -std=c++20 -O2 tools/relabel_words.cpp -o build/relabel-words` (create `build/` first). See [tools and regression checks](docs/tools.md) for all build commands and dependencies. `--to 0` expects one-based input; `--to 1` expects zero-based input. Each uppercase letter is one symbol (`9` becomes `A` when converting to one-based labels). Whitespace, line endings, word length, and filenames are preserved. Optionally use `-n N` to validate the source alphabet size; the default is 13. Only word symbols and ASCII whitespace are accepted.
 
 ```powershell
 # A single file, in either direction; write to a different output file.
-python tools/relabel_words.py --to 0 -n 3 one-based.txt zero-based.txt
-python tools/relabel_words.py --to 1 -n 3 zero-based.txt restored.txt
+./build/relabel-words --to 0 -n 3 one-based.txt zero-based.txt
+./build/relabel-words --to 1 -n 3 zero-based.txt restored.txt
 # Convert every .txt file recursively, retaining relative subdirectories.
 ./tools/relabel-folder.ps1 -To 0 -N 5 -Source words/5 -Destination converted-zero -DryRun
 ./tools/relabel-folder.ps1 -To 0 -N 5 -Source words/5 -Destination converted-zero
@@ -60,11 +60,11 @@ For Bash (Linux, macOS, WSL, or MSYS2):
 bash tools/relabel-folder.sh --to 0 -n 5 --dry-run words/5 converted-zero
 bash tools/relabel-folder.sh --to 0 -n 5 words/5 converted-zero
 bash tools/relabel-folder.sh --to 1 -n 5 converted-zero converted-one
-# Stream a compressed zero-based N=11 word into a one-based text file.
-xz -dc words/11/43930624/superpermutation-11-43930624.txt.xz | python3 tools/relabel_words.py --to 1 -n 11 > one-based-n11.txt
+# Stream a compressed zero-based word into a one-based text file.
+xz -dc zero-based-n11.txt.xz | ./build/relabel-words --to 1 -n 11 > one-based-n11.txt
 ```
 
-For example, `123121321` becomes `012010210` and converts back exactly. Folder conversion processes plain `.txt` files only, skips symlinks, and requires separate, non-nested input/output folders. Extract compressed archives first. `--dry-run` lists planned conversions without checking word contents. Existing outputs are refused unless you pass `--overwrite` (PowerShell: `-Overwrite`). File outputs are published only after complete validation; a failed file leaves no partial output. A folder run stops at the first error, retaining already completed files. Stream output can contain a valid prefix before an input error, so check the exit status. Run `python tools/relabel_words.py --help` for all options; PowerShell accepts `-Python PATH`, and Bash accepts a `RELABEL_PYTHON` environment override.
+For example, `123121321` becomes `012010210` and converts back exactly. Folder conversion processes plain `.txt` files only, skips symlinks, and requires separate, non-nested input/output folders. Extract compressed archives first. `--dry-run` lists planned conversions without checking word contents. Existing outputs are refused unless you pass `--overwrite` (PowerShell: `-Overwrite`). File outputs are published only after complete validation; a failed file leaves no partial output. A folder run stops at the first error, retaining already completed files. Stream output can contain a valid prefix before an input error, so check the exit status. Run `./build/relabel-words --help` for all options; PowerShell accepts `-Tool PATH`, and Bash accepts a `RELABEL_TOOL` environment override.
 
 ## Paint waste
 
@@ -133,7 +133,7 @@ xz -dc words/11/43930624/superpermutation-11-43930624.txt.xz | ./paint-waste -z 
 ```
 # Improvement from V0.1
 
-On the complete 43,930,624-symbol N=11 example, four-bit SPRA 0.2 plus `xz -6e` takes **8,012 bytes**, versus 13,540 bytes for the old `V0.1` format with the same settings: **40.8% smaller**. Default-xz size falls from 45,752 to 19,916 bytes. Six-bit 0.2 plus `-6e` takes 12,560 bytes. Reproduce with `python tools/benchmark_reduced_codec.py -z 11 words/11/43930624/superpermutation-11-43930624.txt.xz --xz-arg=-6e`; use `--baseline-codec PATH` for an old/new comparison. All 37 regression tests passed, and all successful benchmark round trips matched SHA-256. The [guide](docs/reduced_binary.md#measurements-02-versus-the-old-format) and [JSON report](docs/reduced_xz_benchmarks.json) include both presets, both widths, and the N=13 prefix. Length counters remain unsigned 64-bit, so complete N=21..32 superpermutations exceed the format's length limit.
+On the complete 43,930,624-symbol N=11 example, four-bit SPRA 0.2 plus `xz -6e` takes **8,012 bytes**, versus 13,540 bytes for the old `V0.1` format with the same settings: **40.8% smaller**. Default-xz size falls from 45,752 to 19,916 bytes. Six-bit 0.2 plus `-6e` takes 12,560 bytes. Reproduce with `bash tools/benchmark_reduced_codec.sh 11 restored-n11.txt --xz-arg=-6e`; use `--baseline-codec PATH` for an old/new comparison. The C++ and shell regression checks are documented in [tools](docs/tools.md); all successful benchmark round trips matched SHA-256. The [guide](docs/reduced_binary.md#measurements-02-versus-the-old-format) and [JSON report](docs/reduced_xz_benchmarks.json) include both presets, both widths, and the N=13 prefix. Length counters remain unsigned 64-bit, so complete N=21..32 superpermutations exceed the format's length limit.
 
 ## License
 

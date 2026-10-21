@@ -8,12 +8,12 @@ param(
     [ValidateRange(1, 13)][int]$N = 13,
     [switch]$DryRun,
     [switch]$Overwrite,
-    [string]$Python = 'python'
+    [string]$Tool = (Join-Path $PSScriptRoot '../build/relabel-words.exe')
 )
 $ErrorActionPreference = 'Stop'
-$toolArgs = @((Join-Path $PSScriptRoot 'relabel_words.py'), '--recursive', '--to', "$To", '-n', "$N")
+$toolArgs = @('--recursive', '--to', "$To", '-n', "$N")
 if ($DryRun) { $toolArgs += '--dry-run' }
 if ($Overwrite) { $toolArgs += '--overwrite' }
 $toolArgs += @('--', $Source, $Destination)
-& $Python @toolArgs
+& $Tool @toolArgs
 exit $LASTEXITCODE

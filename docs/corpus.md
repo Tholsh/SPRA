@@ -1,5 +1,25 @@
 # Corpus archives: unpack or stream
 
+Halfar's N=14 construction is stored at
+`words/14/93904804425/superpermutation-14-93904804425-halfar.spra.xz`.
+Its 93,904,804,425 symbols occupy **9,679,980 bytes** with six-bit SPRA and
+`xz -6e`. Four-bit encoding fails at symbol 50,200,997 (copy distance 6 is
+outside its N=14 range). The generator emitted one-based `123456789ABCDE`
+directly into the encoder; no raw 94 GB file was saved.
+
+Source: [Halfar's N=14 recipe](https://github.com/jhalfar/superpermutations/tree/8a306f3e0a41f8bac1381767fc8e5018ec17f436/recipes/n14),
+commit `8a306f3e0a41f8bac1381767fc8e5018ec17f436`.
+The original zero-based construction matched its published SHA-256.
+The complete one-based decoded stream also matched the generator:
+`72a881794e308805d3b3d9b7b6bc1404b18b8806a941ab80e9c66fd56736bfa0`.
+Archive SHA-256:
+`2a7dc748e21af86c3f27c7882497092ad8a69a73ce71846d9d4d97e0557b1d0b`.
+
+```sh
+# Stream raw symbols directly to a consumer, or redirect to save them.
+bash tools/spra-xz.sh decode words/14/93904804425/superpermutation-14-93904804425-halfar.spra.xz
+```
+
 Four large N=6 collections are stored as folder archives in `words/6/872/`:
 
 | Archive | Words | Original bytes | Archive bytes |
@@ -19,7 +39,7 @@ individual SPRA encoding is used for these collections.
 `words/6/872/base/`, also uncompressed. Smaller N=6 collections and the N=5,
 N=7, and N=8 files retain their existing formats and labels.
 
-N=9 through N=13 use one-based `.spra.xz` words at
+N=9 through N=14 use one-based `.spra.xz` words at
 `words/N/LENGTH/NAME.spra.xz`: SPRA 0.2 followed by `xz -6e`.
 Four-bit SPRA fields are tried first; words exceeding their range use six-bit
 fields. Decode detects the width and writes normalized symbols without

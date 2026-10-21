@@ -118,10 +118,10 @@ Exit status is 0 for a completed analysis, including a word whose validity is 0.
 
 ## Regression checks
 
-With Python and GCC available, run from the repository root:
+With Bash and a C++20 compiler available, run from the repository root:
 
-```powershell
-python tests/test_reduced_alphabet.py
+```sh
+bash tools/tests/test_reduced_alphabet.sh
 ```
 
-The checks compile into a temporary directory, compare both alphabets with independent window-set oracles, validate the N=5 corpus example, and check bracket/color statistics agreement, consecutive dirty characters, and error output, N=10 through N=13, consent without a terminal, stream-buffer boundaries, short/default output agreement, whitespace, invalid input, and clean-run depths above 255.
+The checks compile into a temporary directory, compare both alphabets with independent window-set oracles, validate the N=5 corpus example, and check bracket/color statistics agreement, consecutive dirty characters, error output, N=10 through N=13, stream-buffer boundaries, short/default output agreement, whitespace, invalid input, and clean-run depths above 255. See [tool dependencies and build instructions](tools.md).

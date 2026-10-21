@@ -298,11 +298,11 @@ prefix round trip, not a test of the complete N=13 word or its coverage.
 ### Reproduce comparisons
 
 ```sh
-python tools/benchmark_reduced_codec.py 8 words/8/46181/superperm8_46181_1.txt
+bash tools/benchmark_reduced_codec.sh 8 words/8/46181/superperm8_46181_1.txt
 bash tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz > restored-n11.txt
-python tools/benchmark_reduced_codec.py 11 restored-n11.txt --xz-arg=-6e
+bash tools/benchmark_reduced_codec.sh 11 restored-n11.txt --xz-arg=-6e
 bash tools/spra-xz.sh decode words/13/6747918058/superpermutation-13-6747918058.spra.xz > restored-n13.txt
-python tools/benchmark_reduced_codec.py --prefix-bytes 16777216 13 restored-n13.txt --xz-arg=-6e
+bash tools/benchmark_reduced_codec.sh --prefix-bytes 16777216 13 restored-n13.txt --xz-arg=-6e
 ```
 
 The script prefers `build/reduced-codec[.exe]`, falling back to the repository
@@ -313,7 +313,7 @@ before recompression; existing archive sizes are not used as the direct baseline
 Temporary files bound memory use. The script clears `XZ_DEFAULTS` and `XZ_OPT`.
 These commands use the current one-based corpus. To reproduce the historical
 zero-based measurements exactly, relabel the decoded input with
-`tools/relabel_words.py --to 0 -n N` and benchmark with `-z`.
+`build/relabel-words --to 0 -n N` and benchmark with `-z`.
 
 To reproduce an old/new comparison, compile `tools/reduced_codec.cpp` from the
 `baseline_commit` pinned in the JSON report into a separate executable, then add
@@ -351,15 +351,17 @@ coverage.
 ## Regression checks
 
 ```sh
-python -m unittest discover -s tests -v
+bash tools/tests/test_reduced_codec.sh
+bash tools/tests/test_reduced_alphabet.sh
+bash tools/tests/test_relabel_words.sh
 ```
 
-All **37 tests passed** for this change. Checks cover independent 0.2 vectors,
+The [C++ fixtures and shell runners](tools.md) replace the Python suite. Checks cover independent 0.2 vectors,
 old `0x01` decode, both widths and label modes, repeated zero tuples, maximal
 counts and chained markers, malformed controls, logical and decoded length
 limits, semantic validation during replay, physical padding, truncation and
 extra bytes, N=32 boundaries, corpus round trips, and large buffers. Wrapper
 checks exercise stdin and named paths with spaces, `-6e` and extra xz options,
 input preservation, and failures in either pipeline stage. Bash is needed for
-wrapper tests; set `SPRA_TEST_BASH` to select it if necessary. The benchmark
+wrapper tests. The benchmark
 option/baseline path and the existing painted-word tests are also checked.

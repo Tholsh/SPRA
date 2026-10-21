@@ -9,11 +9,6 @@ if [[ "$script_path" == */* ]]; then
 else
     script_dir="$PWD"
 fi
-if [[ -n "${RELABEL_PYTHON:-}" ]]; then
-    python_command="$RELABEL_PYTHON"
-elif command -v python3 >/dev/null 2>&1; then
-    python_command=python3
-else
-    python_command=python
-fi
-exec "$python_command" "$script_dir/relabel_words.py" --recursive "$@"
+tool=${RELABEL_TOOL:-"$script_dir/../build/relabel-words"}
+[[ ! -f "$tool.exe" ]] || tool+=.exe
+exec "$tool" --recursive "$@"
