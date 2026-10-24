@@ -10,7 +10,7 @@ This code / corpus repo was meant to be imported as a submodule and used in pers
 
 ## Reduced-alphabet binary files
 
-[`tools/reduced_codec.cpp`](tools/reduced_codec.cpp) encodes SPRA **0.2**, applying RLE directly to `(clean-run depth, signed copy offset)` tuples before packing. `(r,0)` repeats the last ordinary tuple r additional times; `(0,0)` stays literal and the maximal-depth zero-offset token is reserved for extensions. RLE is always active. Choose `--bits 4` (default) or `--bits 6`: physical tokens occupy 8 or 12 bits. Decode detects width and also reads old version `0x01` files. Both commands write **only their result to stdout**. Decode restores the normalized word without a final newline. N may be 1 through 32; logical field ranges remain strict.
+[`tools/reduced_codec.cpp`](tools/reduced_codec.cpp) encodes SPRA **0.2**, applying RLE directly to `(clean-run depth, signed copy offset)` tuples before packing. `(r,0)` repeats the last ordinary tuple r additional times; `(0,0)` stays literal and the maximal-depth zero-offset token is reserved for extensions. RLE is always active. Fields have 4 bits, or 6 when 4 cannot hold the word (encode then prints a note); `--bits 4` or `--bits 6` forces one width. Physical tokens occupy 8 or 12 bits. Decode detects width and also reads old version `0x01` files. Both commands write **only their result to stdout**. Decode restores the normalized word without a final newline. N may be 1 through 32; logical field ranges remain strict.
 
 In a POSIX shell:
 

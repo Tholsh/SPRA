@@ -37,7 +37,7 @@ static Bytes run(const Bytes& input,unsigned n=0,unsigned bits=4,bool zero=false
     check(std::fwrite(input.data(),1,input.size(),source.get())==input.size(),"fixture write");std::rewind(source.get());
     std::fflush(stdout);int saved=DUP(FILENO(stdout));check(saved>=0,"save stdout");
     check(DUP2(FILENO(target.get()),FILENO(stdout))>=0,"capture stdout");
-    try {if(n)encode(source.get(),n,zero,Layout(bits));else decode(source.get(),limit);std::fflush(stdout);}
+    try {if(n&&bits)encode(source.get(),n,zero,Layout(bits));else if(n)encode(source.get(),n,zero);else decode(source.get(),limit);std::fflush(stdout);}
     catch(...) {std::fflush(stdout);DUP2(saved,FILENO(stdout));CLOSE(saved);throw;}
     DUP2(saved,FILENO(stdout));CLOSE(saved);std::rewind(target.get());Bytes result;
     for(int c=std::fgetc(target.get());c!=EOF;c=std::fgetc(target.get()))result.push_back(Byte(c));
@@ -114,8 +114,12 @@ int main() try {
     check(run(packet(3,5,{0,0},{2,2u<<4},4,0,2,3),0,4,false,5)==bytes("11111"),"length at --max-symbols");limited(packet(3,5,{0,0},{2,2u<<4},4,0,2,3),4,"exceeds --max-symbols 4");
     check(run(packet(2,40,{0},{}),0,4,false,40).size()==40,"--max-symbols above N * N!");limited(packet(32,UINT64_MAX,seed31,{}),1000000,"exceeds --max-symbols");
     std::string clean;for(int i=0;i<40000;++i)clean+="12";vector(clean,2,packet(2,clean.size(),{0},{}));
+    // Automatic width: the --bits 4 bytes when every tuple fits, else the --bits 6 bytes.
+    for(unsigned repeats:{1u,13u,14u,15u,61u,62u,63u,200u,1000u})check(run(bytes("12"+std::string(repeats,'1')),3,0)==run(bytes("12"+std::string(repeats,'1')),3,4),"automatic four-bit runs");
+    for(auto [word,n]:std::vector<std::pair<std::string,unsigned>>{{"12"+std::string(11,'1')+"2",3},{"1212121212121212121212121212121211",2}})check(run(bytes(word),n,0)==run(bytes(word),n,6)&&run(bytes(word),n,0)[5]==0x66,"automatic six-bit fallback");
+    bad(bytes("12"+std::string(35,'1')+"2"),"copy distance 36 is outside 6-bit",3,0);bad(bytes("112"),"no earlier occurrence",3,0);
     std::mt19937 random(20261017);
-    for(unsigned n=2;n<=8;++n)for(unsigned trial=0;trial<5;++trial){std::string word=alphabet.substr(0,n);for(unsigned i=0;i<12;++i)word+=word[word.size()-1-random()%std::min<std::size_t>(word.size(),n+8)];check(run(run(bytes(word),n))==bytes(word),"four-bit generated round trip");}
-    for(unsigned n=2;n<=32;++n)for(unsigned trial=0;trial<5;++trial){std::string word=alphabet.substr(0,n);for(unsigned i=0;i<200;++i)word+=word[word.size()-1-random()%std::min<std::size_t>(word.size(),n+32)];check(run(run(bytes(word),n,6))==bytes(word),"generated round trip");}
+    for(unsigned n=2;n<=8;++n)for(unsigned trial=0;trial<5;++trial){std::string word=alphabet.substr(0,n);for(unsigned i=0;i<12;++i)word+=word[word.size()-1-random()%std::min<std::size_t>(word.size(),n+8)];check(run(run(bytes(word),n))==bytes(word),"four-bit generated round trip");check(run(bytes(word),n,0)==run(bytes(word),n),"automatic width keeps four bits");}
+    for(unsigned n=2;n<=32;++n)for(unsigned trial=0;trial<5;++trial){std::string word=alphabet.substr(0,n);for(unsigned i=0;i<200;++i)word+=word[word.size()-1-random()%std::min<std::size_t>(word.size(),n+32)];check(run(run(bytes(word),n,6))==bytes(word),"generated round trip");check(run(run(bytes(word),n,0))==bytes(word),"automatic round trip");}
     std::cout<<"Codec: "<<checks<<" checks passed\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

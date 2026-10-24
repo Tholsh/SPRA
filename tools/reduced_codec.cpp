@@ -38,7 +38,8 @@ constexpr const char* USAGE =
     "       reduced-codec decode [--max-symbols COUNT] [INPUT|-]\n"
     "  N: 1..32; omitted INPUT or '-' reads stdin.\n"
     "  --max-symbols: refuse a header length above COUNT (default N * N!).\n"
-    "  --bits: bits per field (default 4); tuples use 8 or 12 packed bits.\n"
+    "  --bits: bits per field; tuples use 8 or 12 packed bits. Without --bits,\n"
+    "    encode writes 4 and falls back to 6 (with a note) when 4 cannot fit.\n"
     "  encode writes SPRA 0.2 with tuple RLE; decode also reads 0.1 files.\n"
     "  decode detects the layout from the header.\n"
     "  encode writes binary to stdout; decode writes symbols without a newline.\n"
@@ -271,12 +272,34 @@ bool whitespace(int c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
 }
 
-void encode(std::FILE* source, unsigned n, bool zero_based, Layout layout) {
+// Range checks of one layout; each returns the error, or an empty string.
+std::string depth_misfit(Layout layout, Count depth, const std::string& location) {
+    if (depth <= layout.mask()) return {};
+    return "depth " + std::to_string(depth) + " exceeds " + std::to_string(layout.mask()) + location;
+}
+
+std::string distance_misfit(Layout layout, unsigned n, Count distance, const std::string& location) {
+    const unsigned minimum_distance = n >= layout.sign() ? n - (layout.sign() - 1) : 1;
+    const unsigned maximum_distance = n + layout.sign();
+    if (distance >= minimum_distance && distance <= maximum_distance) return {};
+    return "copy distance " + std::to_string(distance) + " is outside " + std::to_string(layout.bits) +
+           "-bit range " + std::to_string(minimum_distance) + ".." + std::to_string(maximum_distance) + location;
+}
+
+// Without a requested layout, tuples are spooled with six-bit fields, which
+// hold every four-bit tuple. If all tuples fit four bits, the spool is
+// re-packed with four-bit fields (the same bytes --bits 4 writes); otherwise
+// the six-bit body is kept and the returned note says why.
+std::string encode(std::FILE* source, unsigned n, bool zero_based, std::optional<Layout> requested = std::nullopt) {
+    const Layout spool_layout = requested ? *requested : Layout(6);
+    const Layout four(4);
+    bool fits_four = true;
+    std::string four_error;
     File spool(std::tmpfile());
     if (!spool) fail("cannot create temporary tuple file");
     binary_mode(spool.get());
     Writer body(spool.get());
-    RleTupleWriter tuples(body, layout);
+    RleTupleWriter tuples(body, spool_layout);
     Reader input(source);
     WordState state(n);
     std::vector<Byte> seed;
@@ -300,16 +323,16 @@ void encode(std::FILE* source, unsigned n, bool zero_based, Layout layout) {
             continue;
         }
         const auto location = " at symbol " + std::to_string(state.length);
-        if (clean_run > layout.mask())
-            fail("depth " + std::to_string(clean_run) + " exceeds " + std::to_string(layout.mask()) + location);
+        if (const auto error = depth_misfit(spool_layout, clean_run, location); !error.empty()) fail(error);
         if (previous == 0)
             fail("dirty symbol has no earlier occurrence" + location + "; copy-only layouts cannot encode it");
         const Count distance = state.length - previous;
-        const unsigned minimum_distance = n >= layout.sign() ? n - (layout.sign() - 1) : 1;
-        const unsigned maximum_distance = n + layout.sign();
-        if (distance < minimum_distance || distance > maximum_distance)
-            fail("copy distance " + std::to_string(distance) + " is outside " + std::to_string(layout.bits) +
-                 "-bit range " + std::to_string(minimum_distance) + ".." + std::to_string(maximum_distance) + location);
+        if (const auto error = distance_misfit(spool_layout, n, distance, location); !error.empty()) fail(error);
+        if (!requested && fits_four) {
+            four_error = depth_misfit(four, clean_run, location);
+            if (four_error.empty()) four_error = distance_misfit(four, n, distance, location);
+            fits_four = four_error.empty();
+        }
         const int offset = static_cast<int>(n) - static_cast<int>(distance);
         tuples.put(static_cast<unsigned>(clean_run), offset);
         ++tuple_count;
@@ -320,6 +343,7 @@ void encode(std::FILE* source, unsigned n, bool zero_based, Layout layout) {
     if (std::fseek(spool.get(), 0, SEEK_SET) != 0) fail("cannot rewind temporary tuple file");
 
     // Publish only after the whole input and all field ranges are validated.
+    const Layout layout = requested || !fits_four ? spool_layout : four;
     Writer output(stdout);
     output.bytes(MAGIC.data(), MAGIC.size());
     output.put(VERSION);
@@ -329,11 +353,32 @@ void encode(std::FILE* source, unsigned n, bool zero_based, Layout layout) {
     output.little_u64(state.length);
     output.little_u64(tuple_count);
     output.bytes(seed.data(), seed.size());
-    std::array<Byte, BUFFER_SIZE> buffer{};
-    while (const auto count = std::fread(buffer.data(), 1, buffer.size(), spool.get()))
-        output.bytes(buffer.data(), count);
-    if (std::ferror(spool.get())) fail("temporary tuple file read failed");
+    if (layout.bits == spool_layout.bits) {
+        std::array<Byte, BUFFER_SIZE> buffer{};
+        while (const auto count = std::fread(buffer.data(), 1, buffer.size(), spool.get()))
+            output.bytes(buffer.data(), count);
+        if (std::ferror(spool.get())) fail("temporary tuple file read failed");
+    } else {
+        Reader spooled(spool.get());
+        TupleReader tokens(spooled, spool_layout);
+        RleTupleWriter repacked(output, layout);
+        Tuple last{};
+        for (Count expanded = 0; expanded < tuple_count;) {
+            const Tuple token = tokens.get();
+            if (token.offset == 0 && token.depth > 0) {
+                for (unsigned i = 0; i < token.depth; ++i) repacked.put(last.depth, last.offset);
+                expanded += token.depth;
+            } else {
+                repacked.put(token.depth, token.offset);
+                last = token;
+                ++expanded;
+            }
+        }
+        repacked.finish();
+    }
     output.finish();
+    if (requested || fits_four) return {};
+    return "four-bit fields cannot encode this word (" + four_error + "); wrote six-bit fields";
 }
 
 // N * N! symbols spell every permutation one after another, so no useful word
@@ -416,7 +461,7 @@ void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) 
 }
 
 struct Options {
-    bool encode = false, zero_based = false;
+    bool encode = false, zero_based = false, explicit_bits = false;
     unsigned n = 0, bits = 4;
     std::optional<Count> max_symbols;
     std::string input = "-";
@@ -443,6 +488,7 @@ Options options(int argc, char** argv) {
             if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
                 fail("--bits must be 4 or 6");
             (void)Layout(result.bits);
+            result.explicit_bits = true;
         } else if (!result.encode && (arg == "--max-symbols" || arg.starts_with("--max-symbols="))) {
             if (result.max_symbols) fail("duplicate --max-symbols option");
             std::string_view value;
@@ -491,7 +537,11 @@ int main(int argc, char** argv) try {
     }
     binary_mode(source);
     binary_mode(stdout);
-    if (args.encode) encode(source, args.n, args.zero_based, Layout(args.bits));
+    if (args.encode) {
+        const auto note =
+            encode(source, args.n, args.zero_based, args.explicit_bits ? std::optional(Layout(args.bits)) : std::nullopt);
+        if (!note.empty()) std::fprintf(stderr, "reduced-codec: note: %s\n", note.c_str());
+    }
     else decode(source, args.max_symbols);
     return 0;
 } catch (const std::exception& error) {

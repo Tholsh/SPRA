@@ -27,6 +27,18 @@ printf bad > "$work/bad"
 if bash "$wrapper" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 if "$SPRA_CODEC" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 [[ ! -s $work/out ]]
+# Without --bits, a word that four-bit fields cannot hold gets six-bit fields and a note.
+printf '12111111111112' > "$work/six.txt"
+"$SPRA_CODEC" encode 3 "$work/six.txt" > "$work/auto.spra" 2> "$work/error"
+"$SPRA_CODEC" encode --bits 6 3 "$work/six.txt" > "$work/six.spra"
+cmp "$work/auto.spra" "$work/six.spra"
+grep -q 'note: four-bit fields cannot encode this word (copy distance 12' "$work/error"
+if "$SPRA_CODEC" encode --bits 4 3 "$work/six.txt" > "$work/out" 2> "$work/error"; then echo 'four-bit encode accepted distance 12' >&2; exit 1; fi
+[[ ! -s $work/out ]]
+grep -q 'copy distance 12 is outside 4-bit range' "$work/error"
+bash "$wrapper" encode 3 - < "$work/six.txt" 2> /dev/null > "$work/six.xz"
+bash "$wrapper" decode "$work/six.xz" > "$work/restored"
+cmp "$work/six.txt" "$work/restored"
 for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown' 'decode --max-symbols' 'decode --max-symbols x' 'decode --max-symbols=5x' 'decode --max-symbols 5 --max-symbols=6' 'encode --max-symbols 5 3'; do
     if "$SPRA_CODEC" $args < /dev/null > "$work/out" 2> "$work/error"; then echo "invalid codec arguments accepted: $args" >&2; exit 1; fi
     [[ ! -s $work/out && -s $work/error ]]
@@ -65,6 +77,10 @@ for n in 5 6 7 8 9; do
         9) bash "$wrapper" decode "$root/words/9/408731/superperm9_408731_19_canonical.spra.xz" > "$work/source";;
     esac
     tr -d ' \t\r\n\v\f' < "$work/source" > "$work/expected"
+    "$SPRA_CODEC" encode "$n" "$work/source" > "$work/auto.spra" 2> "$work/error"
+    "$SPRA_CODEC" encode --bits 4 "$n" "$work/source" > "$work/four.spra"
+    cmp "$work/auto.spra" "$work/four.spra"
+    [[ ! -s $work/error ]]
     for bits in 4 6; do
         bash "$wrapper" encode --bits "$bits" "$n" "$work/source" > "$work/packed.xz"
         bash "$wrapper" decode "$work/packed.xz" > "$work/restored"

@@ -1,9 +1,11 @@
 # SPRA 0.2: tuple RLE and xz
 
 [`tools/reduced_codec.cpp`](../tools/reduced_codec.cpp) transforms normalized words
-into SPRA **0.2**, with mandatory run-length encoding of logical tuples. Choose
-`--bits 4` (default) or `--bits 6` for unsigned clean-run depth and signed copy
-offset. Physical tokens occupy 8 or 12 packed bits. RLE happens **before packing**,
+into SPRA **0.2**, with mandatory run-length encoding of logical tuples. Fields
+for unsigned clean-run depth and signed copy offset have 4 or 6 bits. Without
+`--bits`, encode writes four-bit fields and falls back to six-bit fields when
+four bits cannot hold the word; `--bits 4` or `--bits 6` forces one width.
+Physical tokens occupy 8 or 12 packed bits. RLE happens **before packing**,
 so six-bit tuples are compared as complete tuples, not as bytes.
 
 Encoding always writes header version byte `0x02`; there is no legacy-output or
@@ -39,7 +41,8 @@ reduced-codec decode [--max-symbols COUNT] [INPUT|-]
 
 Omitted `INPUT` or `-` reads stdin. `--bits=4` and `--bits=6` are accepted.
 Both commands write only their result to stdout. Errors go to stderr, returning
-status 1; success is quiet and returns 0. Decode writes no final newline.
+status 1; success returns 0 and is quiet, except for the one-line note of
+encode when it falls back to six-bit fields. Decode writes no final newline.
 
 Decode refuses a header length above N * N! before writing anything. N * N! is
 the length of all N! permutations written one after another, so no useful word
@@ -346,8 +349,16 @@ Every dirty symbol must already have appeared, and its nearest-reference offset
 must fit. A first appearance inside a dirty window is rejected. There are no
 literal-symbol or extended-depth escapes. A clean run before a dirty symbol must
 fit the chosen field; an arbitrary trailing clean run is represented by decoded
-length. Values never wrap or truncate, and four-bit rejection does not trigger
-an automatic retry with six-bit fields.
+length. Values never wrap or truncate.
+
+Without `--bits`, encode checks every tuple against both widths in one pass. If
+all tuples fit four-bit fields it writes exactly the bytes of `--bits 4`;
+otherwise it writes exactly the bytes of `--bits 6` and prints one line on
+stderr, `reduced-codec: note: four-bit fields cannot encode this word (...)`,
+naming the first tuple out of the four-bit range. The exit status is still 0.
+If six bits do not fit either, encode fails with the six-bit error. With
+`--bits 4` or `--bits 6` there is no fallback: a tuple out of range is an error,
+as before.
 
 Header counts and word positions remain unsigned 64-bit. Although N=32 is a
 supported alphabet, complete N=21..32 superpermutations exceed the length field:
@@ -355,7 +366,9 @@ even 21! is greater than `2^64-1`. This version does not widen those counters.
 
 The encoder checks all input before publishing bytes, spooling the RLE body to a
 temporary file to determine header counts. Memory is fixed buffers plus O(N)
-state. Temporary disk use is the packed **physical** body. Decode streams without
+state. Temporary disk use is the packed **physical** body; without `--bits` the
+spool uses six-bit fields and is re-packed when four bits fit, so it can be
+up to 1.5 times the final body. Decode streams without
 spooling the word. SPRA itself has no checksum; xz supplies its outer integrity
 check. Structural validity and archive integrity do not establish permutation
 coverage.
