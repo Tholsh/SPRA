@@ -6,7 +6,7 @@
 #
 # usage: bash tools/tests/test_recipe_container.sh [--slow]
 #   --slow (or RECIPE_SLOW=1) also decodes n = 13 (about 3 min, 2 GB of memory, 14 GB of temporary disk) and
-#   n = 14 (about 8 min, 0.5 GB; the 94 GB word is hashed as a stream, not stored).
+#   n = 14 (about 4 min, 0.5 GB; the 94 GB word is hashed as a stream, not stored).
 # Needs Python 3 (PYTHON, default python3), a C compiler for gen14 (CC, default gcc), a C++20 compiler for the SPRA
 # fallback (CXX, default g++), xz and sha256sum. RECIPE_WORK selects the folder for temporary files.
 set -euo pipefail
