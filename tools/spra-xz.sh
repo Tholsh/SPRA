@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
     printf '%s\n' 'usage: spra-xz.sh encode [--bits 4|6] [-z] N [INPUT|-] [-- XZ_ARGS...]
-       spra-xz.sh decode [INPUT|-] [-- XZ_ARGS...]
+       spra-xz.sh decode [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 
 Encode a word to SPRA 0.2 plus xz, or decode a .spra.xz archive.
 Both commands write only their result to stdout and preserve input files.
@@ -31,9 +31,29 @@ while (($#)) && [[ $1 != -- ]]; do
 done
 if (($#)); then shift; fi
 xz_args=("$@")
-if [[ $operation == decode && ${#codec_args[@]} -gt 1 ]]; then
-    usage >&2
-    exit 1
+# Decode options go to the codec; at most one other argument names the input.
+decode_args=()
+input=-
+has_input=false
+if [[ $operation == decode ]]; then
+    for ((i = 0; i < ${#codec_args[@]}; ++i)); do
+        arg=${codec_args[i]}
+        if [[ $arg == --max-symbols ]]; then
+            decode_args+=("$arg")
+            if ((i + 1 < ${#codec_args[@]})); then
+                decode_args+=("${codec_args[i + 1]}")
+                ((++i))
+            fi
+        elif [[ $arg == --max-symbols=* ]]; then
+            decode_args+=("$arg")
+        elif ! $has_input; then
+            input=$arg
+            has_input=true
+        else
+            usage >&2
+            exit 1
+        fi
+    done
 fi
 
 script_path=${BASH_SOURCE[0]//\\//}
@@ -60,5 +80,5 @@ fi
 if [[ $operation == encode ]]; then
     "$codec" encode "${codec_args[@]}" | xz -c "${xz_args[@]}"
 else
-    xz -dc "${xz_args[@]}" -- "${codec_args[0]:--}" | "$codec" decode
+    xz -dc "${xz_args[@]}" -- "$input" | "$codec" decode ${decode_args[@]+"${decode_args[@]}"}
 fi

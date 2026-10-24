@@ -31,13 +31,13 @@ static Bytes packet(unsigned n,uint64_t length,Bytes seed,std::vector<unsigned> 
     return b;
 }
 // Capture the actual FILE-based codec, including binary zero/LF/Ctrl-Z bytes.
-static Bytes run(const Bytes& input,unsigned n=0,unsigned bits=4,bool zero=false) {
+static Bytes run(const Bytes& input,unsigned n=0,unsigned bits=4,bool zero=false,std::optional<Count> limit=UINT64_MAX) {
     File source(std::tmpfile()),target(std::tmpfile());check(bool(source)&&bool(target),"temporary files");
     binary_mode(source.get());binary_mode(target.get());
     check(std::fwrite(input.data(),1,input.size(),source.get())==input.size(),"fixture write");std::rewind(source.get());
     std::fflush(stdout);int saved=DUP(FILENO(stdout));check(saved>=0,"save stdout");
     check(DUP2(FILENO(target.get()),FILENO(stdout))>=0,"capture stdout");
-    try {if(n)encode(source.get(),n,zero,Layout(bits));else decode(source.get());std::fflush(stdout);}
+    try {if(n)encode(source.get(),n,zero,Layout(bits));else decode(source.get(),limit);std::fflush(stdout);}
     catch(...) {std::fflush(stdout);DUP2(saved,FILENO(stdout));CLOSE(saved);throw;}
     DUP2(saved,FILENO(stdout));CLOSE(saved);std::rewind(target.get());Bytes result;
     for(int c=std::fgetc(target.get());c!=EOF;c=std::fgetc(target.get()))result.push_back(Byte(c));
@@ -46,6 +46,10 @@ static Bytes run(const Bytes& input,unsigned n=0,unsigned bits=4,bool zero=false
 static void bad(const Bytes& data,std::string_view message="",unsigned n=0,unsigned bits=4) {
     try {run(data,n,bits);}catch(const std::exception& e){check(std::string(e.what()).find(message)!=std::string::npos,"error message: "+std::string(e.what()));return;}
     check(false,"malformed input accepted");
+}
+static void limited(const Bytes& data,std::optional<Count> limit,std::string_view message) {
+    try {run(data,0,4,false,limit);}catch(const std::exception& e){check(std::string(e.what()).find(message)!=std::string::npos,"limit message: "+std::string(e.what()));return;}
+    check(false,"length above the limit accepted");
 }
 static void vector(const std::string& word,unsigned n,const Bytes& expected,unsigned bits=4,bool zero=false) {
     check(run(bytes(word),n,bits,zero)==expected,"wire vector "+word);check(run(expected)==bytes(word),"fixture decode");
@@ -104,6 +108,11 @@ int main() try {
     vector("21312",4,packet(4,5,{1,0,2},{2,0}));
     vector("12"+std::string(34,'1')+"2",3,packet(3,37,{0,1},{1,2,32u<<6,32},6,0,2,35),6);
     for(auto [word,n,bits,message]:std::vector<std::tuple<std::string,unsigned,unsigned,std::string>>{{"112",3,4,"no earlier occurrence"},{"123x",3,4,"invalid alphabet"},{"124",3,4,"invalid alphabet"},{"1234567899",9,4,"copy distance 1"},{"12"+std::string(11,'1')+"2",3,4,"copy distance 12"},{"12"+std::string(35,'1')+"2",3,6,"copy distance 36"}})bad(bytes(word),message,n,bits);
+    check(default_max_symbols(1)==1&&default_max_symbols(3)==18&&default_max_symbols(13)==80951270400ull&&default_max_symbols(19)==2311256907767808000ull&&default_max_symbols(20)==UINT64_MAX,"N * N! limit");
+    limited(packet(1,UINT64_MAX,{},{}),std::nullopt,"exceeds N * N! = 1");limited(packet(3,UINT64_MAX,{0,1},{}),std::nullopt,"exceeds N * N! = 18");
+    check(run(packet(3,18,{0,1},{}),0,4,false,std::nullopt)==bytes("123123123123123123"),"length N * N! accepted");limited(packet(3,19,{0,1},{}),std::nullopt,"exceeds N * N!");
+    check(run(packet(3,5,{0,0},{2,2u<<4},4,0,2,3),0,4,false,5)==bytes("11111"),"length at --max-symbols");limited(packet(3,5,{0,0},{2,2u<<4},4,0,2,3),4,"exceeds --max-symbols 4");
+    check(run(packet(2,40,{0},{}),0,4,false,40).size()==40,"--max-symbols above N * N!");limited(packet(32,UINT64_MAX,seed31,{}),1000000,"exceeds --max-symbols");
     std::string clean;for(int i=0;i<40000;++i)clean+="12";vector(clean,2,packet(2,clean.size(),{0},{}));
     std::mt19937 random(20261017);
     for(unsigned n=2;n<=8;++n)for(unsigned trial=0;trial<5;++trial){std::string word=alphabet.substr(0,n);for(unsigned i=0;i<12;++i)word+=word[word.size()-1-random()%std::min<std::size_t>(word.size(),n+8)];check(run(run(bytes(word),n))==bytes(word),"four-bit generated round trip");}

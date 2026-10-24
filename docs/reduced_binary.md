@@ -34,12 +34,22 @@ The interface is unchanged:
 
 ```text
 reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]
-reduced-codec decode [INPUT|-]
+reduced-codec decode [--max-symbols COUNT] [INPUT|-]
 ```
 
 Omitted `INPUT` or `-` reads stdin. `--bits=4` and `--bits=6` are accepted.
 Both commands write only their result to stdout. Errors go to stderr, returning
 status 1; success is quiet and returns 0. Decode writes no final newline.
+
+Decode refuses a header length above N * N! before writing anything. N * N! is
+the length of all N! permutations written one after another, so no useful word
+is longer. `--max-symbols COUNT` (or `--max-symbols=COUNT`) replaces that limit
+in either direction: lower it for files from someone else, raise it for long
+test words. Without a limit, a 24-byte file with N=1 and length 2^64-1 makes
+the decoder write clean steps until the disk is full, and xz shrinks such a
+file to almost nothing. The default only catches impossible lengths: at N=13 it
+still allows 80,951,270,400 symbols, and from N=20 on N * N! exceeds the 64-bit
+length field, so only `--max-symbols` limits those files.
 
 Input labels are the first N characters of `123456789ABCDEFGHIJKLMNOPQRSTUVW`,
 or `0123456789ABCDEFGHIJKLMNOPQRSTUV` with `-z`, for N=1..32. Each uppercase
@@ -67,8 +77,10 @@ Its interface is:
 
 ```text
 spra-xz.sh encode [CODEC_OPTIONS] N [INPUT|-] [-- XZ_ARGS...]
-spra-xz.sh decode [INPUT|-] [-- XZ_ARGS...]
+spra-xz.sh decode [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 ```
+
+Decode options before `--` go to `reduced-codec decode`.
 
 Arguments after `--` are passed separately and unchanged to xz; for example,
 `-- -6e --check=crc32`. Omit them to use xz defaults. Decode also accepts xz

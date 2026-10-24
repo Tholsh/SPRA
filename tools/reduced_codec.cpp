@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -34,8 +35,9 @@ constexpr std::string_view ZERO_BASED = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
 static_assert(ONE_BASED.size() == MAX_N && ZERO_BASED.size() == MAX_N);
 constexpr const char* USAGE =
     "usage: reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]\n"
-    "       reduced-codec decode [INPUT|-]\n"
+    "       reduced-codec decode [--max-symbols COUNT] [INPUT|-]\n"
     "  N: 1..32; omitted INPUT or '-' reads stdin.\n"
+    "  --max-symbols: refuse a header length above COUNT (default N * N!).\n"
     "  --bits: bits per field (default 4); tuples use 8 or 12 packed bits.\n"
     "  encode writes SPRA 0.2 with tuple RLE; decode also reads 0.1 files.\n"
     "  decode detects the layout from the header.\n"
@@ -334,7 +336,19 @@ void encode(std::FILE* source, unsigned n, bool zero_based, Layout layout) {
     output.finish();
 }
 
-void decode(std::FILE* source) {
+// N * N! symbols spell every permutation one after another, so no useful word
+// is longer. Without --max-symbols, decode refuses longer header lengths
+// before writing anything. Saturates at 2^64-1 (N >= 20).
+Count default_max_symbols(unsigned n) {
+    Count product = n;
+    for (unsigned factor = 2; factor <= n; ++factor) {
+        if (product > std::numeric_limits<Count>::max() / factor) return std::numeric_limits<Count>::max();
+        product *= factor;
+    }
+    return product;
+}
+
+void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) {
     Reader input(source);
     for (Byte expected : MAGIC)
         if (input.required("header") != expected) fail("not an SPRA binary file");
@@ -347,6 +361,11 @@ void decode(std::FILE* source) {
     if (n == 0 || n > MAX_N) fail("header N must be 1..32");
     const Count length = input.little_u64("header");
     const Count tuple_count = input.little_u64("header");
+    if (max_symbols && length > *max_symbols)
+        fail("header length " + std::to_string(length) + " exceeds --max-symbols " + std::to_string(*max_symbols));
+    if (!max_symbols && length > default_max_symbols(n))
+        fail("header length " + std::to_string(length) + " exceeds N * N! = " + std::to_string(default_max_symbols(n)) +
+             "; use --max-symbols to allow it");
     const auto seed_length = static_cast<unsigned>(std::min<Count>(length, n - 1));
     if (tuple_count > length - seed_length) fail("tuple count exceeds decoded length");
     std::array<Byte, MAX_N - 1> seed{};
@@ -399,6 +418,7 @@ void decode(std::FILE* source) {
 struct Options {
     bool encode = false, zero_based = false;
     unsigned n = 0, bits = 4;
+    std::optional<Count> max_symbols;
     std::string input = "-";
 };
 
@@ -423,6 +443,18 @@ Options options(int argc, char** argv) {
             if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
                 fail("--bits must be 4 or 6");
             (void)Layout(result.bits);
+        } else if (!result.encode && (arg == "--max-symbols" || arg.starts_with("--max-symbols="))) {
+            if (result.max_symbols) fail("duplicate --max-symbols option");
+            std::string_view value;
+            if (arg == "--max-symbols") {
+                if (++i == argc) fail("--max-symbols requires a count");
+                value = argv[i];
+            } else value = arg.substr(14);
+            Count count = 0;
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), count);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
+                fail("--max-symbols requires a count");
+            result.max_symbols = count;
         } else if (result.encode && (arg == "-z" || arg == "--zero-based")) {
             if (result.zero_based) fail("duplicate zero-based flag");
             result.zero_based = true;
@@ -460,7 +492,7 @@ int main(int argc, char** argv) try {
     binary_mode(source);
     binary_mode(stdout);
     if (args.encode) encode(source, args.n, args.zero_based, Layout(args.bits));
-    else decode(source);
+    else decode(source, args.max_symbols);
     return 0;
 } catch (const std::exception& error) {
     std::fprintf(stderr, "reduced-codec: %s\n", error.what());

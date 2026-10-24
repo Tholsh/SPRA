@@ -74,7 +74,8 @@ bash tools/tests/test_relabel_words.sh
 Each runner compiles into an OS temporary directory and cleans it on exit.
 Set `CXX` to select the compiler. Codec tests use independent C++ wire fixtures
 for both widths, legacy decode, RLE limits, malformed headers/markers, padding,
-truncation, signed distances, alphabets through N=32 and large buffers. Shell
+truncation, signed distances, alphabets through N=32, large buffers and the
+N * N! decode limit with `--max-symbols`. Shell
 checks cover CLI errors, paths with spaces, xz failures, N=5..9 corpus samples,
 benchmark options/baselines and compressed prefixes. JSON checks use PowerShell
 on Windows or `jq` elsewhere.

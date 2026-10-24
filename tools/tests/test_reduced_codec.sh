@@ -27,10 +27,35 @@ printf bad > "$work/bad"
 if bash "$wrapper" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 if "$SPRA_CODEC" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 [[ ! -s $work/out ]]
-for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown'; do
+for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown' 'decode --max-symbols' 'decode --max-symbols x' 'decode --max-symbols=5x' 'decode --max-symbols 5 --max-symbols=6' 'encode --max-symbols 5 3'; do
     if "$SPRA_CODEC" $args < /dev/null > "$work/out" 2> "$work/error"; then echo "invalid codec arguments accepted: $args" >&2; exit 1; fi
     [[ ! -s $work/out && -s $work/error ]]
 done
+# Header length above N * N! (here 2^64-1 at N=1, a 24-byte file) needs --max-symbols.
+printf 'SPRA\002\104\000\001\377\377\377\377\377\377\377\377\000\000\000\000\000\000\000\000' > "$work/long.spra"
+if "$SPRA_CODEC" decode "$work/long.spra" > "$work/out" 2> "$work/error"; then echo 'length above N * N! accepted' >&2; exit 1; fi
+[[ ! -s $work/out ]]
+grep -q 'N \* N!' "$work/error"
+if "$SPRA_CODEC" decode --max-symbols 1000 "$work/long.spra" > "$work/out" 2> "$work/error"; then exit 1; fi
+grep -q 'exceeds --max-symbols 1000' "$work/error"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" > "$work/word.spra"
+for limit in '--max-symbols 5' '--max-symbols=5' '--max-symbols 18446744073709551615'; do
+    "$SPRA_CODEC" decode $limit "$work/word.spra" > "$work/restored"
+    cmp "$work/expected" "$work/restored"
+done
+if "$SPRA_CODEC" decode --max-symbols 4 "$work/word.spra" > "$work/out" 2>/dev/null; then echo 'length above --max-symbols accepted' >&2; exit 1; fi
+[[ ! -s $work/out ]]
+bash "$wrapper" encode 3 "$work/input word.txt" > "$work/word.xz"
+bash "$wrapper" decode --max-symbols 5 "$work/word.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+bash "$wrapper" decode --max-symbols=5 - < "$work/word.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+for args in 'decode --max-symbols 4' 'decode --max-symbols' 'decode --max-symbols 5 one two'; do
+    if bash "$wrapper" $args "$work/word.xz" < /dev/null > /dev/null 2>&1; then echo "bad wrapper decode accepted: $args" >&2; exit 1; fi
+done
+xz -c "$work/long.spra" > "$work/long.xz"
+if bash "$wrapper" decode "$work/long.xz" > "$work/out" 2>/dev/null; then echo 'wrapper decoded a length above N * N!' >&2; exit 1; fi
+[[ ! -s $work/out ]]
 for n in 5 6 7 8 9; do
     case $n in
         5) cp "$root/words/5/153/153-recursive.txt" "$work/source";;
