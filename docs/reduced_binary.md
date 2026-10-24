@@ -445,6 +445,23 @@ spooling the word. SPRA itself has no checksum; xz supplies its outer integrity
 check. Structural validity and archive integrity do not establish permutation
 coverage.
 
+### Integrity and word identity
+
+A changed body byte can decode to a different word with exit status 0. Of the
+184 single-bit flips in the body of the 153-symbol N=5 word, 29 decode to
+another 153-symbol word, and 28 of those also pass `--strict`. xz checks its
+archives (CRC64 by default), so this matters for raw `.spra` files and for
+anything that strips the xz container. To trust a word, check the word: its
+coverage, or a known SHA-256 of its letters.
+
+One word also has many valid files (see [Canonical files](#canonical-files)),
+and xz settings change the archive bytes, so the SHA-256 of a `.spra` or
+`.spra.xz` file does not identify a word. Identify words by the SHA-256 of the
+decoded letters, for example `bash tools/spra-xz.sh decode FILE | sha256sum`.
+When one file per word is needed, for instance to key files by hash, accept
+only files that pass `decode --strict`; their SPRA bytes then follow from the
+letters alone. The format itself is unchanged.
+
 ## Regression checks
 
 ```sh
