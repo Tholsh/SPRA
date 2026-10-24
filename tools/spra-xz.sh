@@ -5,7 +5,7 @@ set -euo pipefail
 
 usage() {
     printf '%s\n' 'usage: spra-xz.sh encode [--bits 4|6] [-z] N [INPUT|-] [-- XZ_ARGS...]
-       spra-xz.sh decode [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
+       spra-xz.sh decode [--strict] [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 
 Encode a word to SPRA 0.2 plus xz, or decode a .spra.xz archive.
 Both commands write only their result to stdout and preserve input files.
@@ -44,7 +44,7 @@ if [[ $operation == decode ]]; then
                 decode_args+=("${codec_args[i + 1]}")
                 ((++i))
             fi
-        elif [[ $arg == --max-symbols=* ]]; then
+        elif [[ $arg == --max-symbols=* || $arg == --strict ]]; then
             decode_args+=("$arg")
         elif ! $has_input; then
             input=$arg

@@ -39,7 +39,7 @@ grep -q 'copy distance 12 is outside 4-bit range' "$work/error"
 bash "$wrapper" encode 3 - < "$work/six.txt" 2> /dev/null > "$work/six.xz"
 bash "$wrapper" decode "$work/six.xz" > "$work/restored"
 cmp "$work/six.txt" "$work/restored"
-for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown' 'decode --max-symbols' 'decode --max-symbols x' 'decode --max-symbols=5x' 'decode --max-symbols 5 --max-symbols=6' 'encode --max-symbols 5 3'; do
+for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown' 'decode --max-symbols' 'decode --max-symbols x' 'decode --max-symbols=5x' 'decode --max-symbols 5 --max-symbols=6' 'encode --max-symbols 5 3' 'encode --strict 3' 'decode --strict --strict'; do
     if "$SPRA_CODEC" $args < /dev/null > "$work/out" 2> "$work/error"; then echo "invalid codec arguments accepted: $args" >&2; exit 1; fi
     [[ ! -s $work/out && -s $work/error ]]
 done
@@ -65,6 +65,26 @@ cmp "$work/expected" "$work/restored"
 for args in 'decode --max-symbols 4' 'decode --max-symbols' 'decode --max-symbols 5 one two'; do
     if bash "$wrapper" $args "$work/word.xz" < /dev/null > /dev/null 2>&1; then echo "bad wrapper decode accepted: $args" >&2; exit 1; fi
 done
+# --strict: 02 20 is the canonical body of 11111 at N=3; 02 10 10 and a non-nearest copy are not.
+printf 'SPRA\002\104\000\003\005\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\000\000\002\040' > "$work/canonical.spra"
+printf 'SPRA\002\104\000\003\005\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\000\000\002\020\020' > "$work/split.spra"
+printf 'SPRA\002\104\000\003\003\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\001' > "$work/far.spra"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" | cmp - "$work/canonical.spra"
+"$SPRA_CODEC" decode --strict "$work/canonical.spra" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+"$SPRA_CODEC" decode "$work/split.spra" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+[[ $("$SPRA_CODEC" decode "$work/far.spra") == 111 ]]
+for file in split far; do
+    if "$SPRA_CODEC" decode --strict "$work/$file.spra" > /dev/null 2> "$work/error"; then echo "--strict accepted $file.spra" >&2; exit 1; fi
+    grep -q 'strict: ' "$work/error"
+done
+xz -c "$work/split.spra" > "$work/split.xz"
+bash "$wrapper" decode "$work/split.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+if bash "$wrapper" decode --strict "$work/split.xz" > /dev/null 2>&1; then echo 'wrapper --strict accepted split.spra' >&2; exit 1; fi
+bash "$wrapper" decode --strict --max-symbols 5 "$work/word.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
 xz -c "$work/long.spra" > "$work/long.xz"
 if bash "$wrapper" decode "$work/long.xz" > "$work/out" 2>/dev/null; then echo 'wrapper decoded a length above N * N!' >&2; exit 1; fi
 [[ ! -s $work/out ]]
@@ -81,6 +101,8 @@ for n in 5 6 7 8 9; do
     "$SPRA_CODEC" encode --bits 4 "$n" "$work/source" > "$work/four.spra"
     cmp "$work/auto.spra" "$work/four.spra"
     [[ ! -s $work/error ]]
+    "$SPRA_CODEC" decode --strict "$work/auto.spra" > "$work/restored"
+    cmp "$work/expected" "$work/restored"
     for bits in 4 6; do
         bash "$wrapper" encode --bits "$bits" "$n" "$work/source" > "$work/packed.xz"
         bash "$wrapper" decode "$work/packed.xz" > "$work/restored"

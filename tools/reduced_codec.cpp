@@ -35,9 +35,10 @@ constexpr std::string_view ZERO_BASED = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
 static_assert(ONE_BASED.size() == MAX_N && ZERO_BASED.size() == MAX_N);
 constexpr const char* USAGE =
     "usage: reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]\n"
-    "       reduced-codec decode [--max-symbols COUNT] [INPUT|-]\n"
+    "       reduced-codec decode [--strict] [--max-symbols COUNT] [INPUT|-]\n"
     "  N: 1..32; omitted INPUT or '-' reads stdin.\n"
     "  --max-symbols: refuse a header length above COUNT (default N * N!).\n"
+    "  --strict: accept only the canonical file, the one encode writes without --bits.\n"
     "  --bits: bits per field; tuples use 8 or 12 packed bits. Without --bits,\n"
     "    encode writes 4 and falls back to 6 (with a note) when 4 cannot fit.\n"
     "  encode writes SPRA 0.2 with tuple RLE; decode also reads 0.1 files.\n"
@@ -393,12 +394,17 @@ Count default_max_symbols(unsigned n) {
     return product;
 }
 
-void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) {
+// --strict accepts only the canonical file of the word, the bytes encode writes
+// without --bits (docs/reduced_binary.md, "Canonical files"): version 0x02,
+// nearest references, literals only where a run of equal tuples starts, full
+// markers except the last of a run, and six-bit fields only when needed.
+void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt, bool strict = false) {
     Reader input(source);
     for (Byte expected : MAGIC)
         if (input.required("header") != expected) fail("not an SPRA binary file");
     const Byte version = input.required("header");
     if (version != 1 && version != VERSION) fail("unsupported format version");
+    if (strict && version != VERSION) fail("strict: version 0x01 is not canonical");
     const Layout layout = Layout::from_id(input.required("header"));
     const Byte flags = input.required("header");
     if (flags & ~1u) fail("unsupported header flags");
@@ -427,17 +433,25 @@ void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) 
     };
     for (unsigned i = 0; i < seed_length; ++i) emit(seed[i]);
     TupleReader tuples(input, layout);
+    bool fits_four = true;
     const auto execute = [&](Tuple tuple) {
         const auto [depth, offset] = tuple;
         if (Count(depth) >= length - state.length) fail("tuple exceeds decoded length");
         for (unsigned step = 0; step < depth; ++step) emit(state.next_clean());
         const int distance = static_cast<int>(n) - offset;
         if (distance <= 0) fail("copy reference is not backward");
-        emit(state.back(static_cast<unsigned>(distance)));
+        const Byte symbol = state.back(static_cast<unsigned>(distance));
+        const Count nearest = state.length + 1 - state.previous(symbol);
+        if (strict && nearest != Count(distance))
+            fail("strict: copy at symbol " + std::to_string(state.length + 1) + " uses distance " +
+                 std::to_string(distance) + ", but the nearest occurrence is at distance " + std::to_string(nearest));
+        emit(symbol);
         if (state.clean()) fail("dirty tuple produces a clean window at symbol " + std::to_string(state.length));
+        fits_four = fits_four && depth <= 15 && offset >= -8 && offset <= 7;
     };
     Tuple previous{};
     bool has_previous = false;
+    unsigned last_marker = 0; // repeat count of the previous token if it was a marker
     Count expanded = 0;
     while (expanded < tuple_count) {
         const Tuple token = tuples.get();
@@ -445,9 +459,16 @@ void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) 
             if (token.depth == layout.mask()) fail("reserved tuple extension opcode");
             if (!has_previous) fail("repeat marker has no preceding tuple");
             if (token.depth > tuple_count - expanded) fail("repeat marker exceeds logical tuple count");
+            if (strict && last_marker && last_marker != layout.mask() - 1)
+                fail("strict: repeat marker follows a marker of " + std::to_string(last_marker) + " (canonical: " +
+                     std::to_string(layout.mask() - 1) + " until the last marker of a run)");
+            last_marker = token.depth;
             for (unsigned i = 0; i < token.depth; ++i) execute(previous);
             expanded += token.depth;
         } else {
+            if (strict && has_previous && token == previous)
+                fail("strict: literal repeats the previous tuple (canonical: a repeat marker)");
+            last_marker = 0;
             execute(token);
             previous = token;
             has_previous = true;
@@ -456,12 +477,13 @@ void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) 
     }
     tuples.finish();
     if (input.get() != EOF) fail("extra bytes after tuple body");
+    if (strict && layout.bits == 6 && fits_four) fail("strict: six-bit fields, but every tuple fits four-bit fields");
     while (state.length < length) emit(state.next_clean());
     output.finish();
 }
 
 struct Options {
-    bool encode = false, zero_based = false, explicit_bits = false;
+    bool encode = false, zero_based = false, explicit_bits = false, strict = false;
     unsigned n = 0, bits = 4;
     std::optional<Count> max_symbols;
     std::string input = "-";
@@ -501,6 +523,9 @@ Options options(int argc, char** argv) {
             if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
                 fail("--max-symbols requires a count");
             result.max_symbols = count;
+        } else if (!result.encode && arg == "--strict") {
+            if (result.strict) fail("duplicate --strict option");
+            result.strict = true;
         } else if (result.encode && (arg == "-z" || arg == "--zero-based")) {
             if (result.zero_based) fail("duplicate zero-based flag");
             result.zero_based = true;
@@ -541,8 +566,9 @@ int main(int argc, char** argv) try {
         const auto note =
             encode(source, args.n, args.zero_based, args.explicit_bits ? std::optional(Layout(args.bits)) : std::nullopt);
         if (!note.empty()) std::fprintf(stderr, "reduced-codec: note: %s\n", note.c_str());
+    } else {
+        decode(source, args.max_symbols, args.strict);
     }
-    else decode(source, args.max_symbols);
     return 0;
 } catch (const std::exception& error) {
     std::fprintf(stderr, "reduced-codec: %s\n", error.what());

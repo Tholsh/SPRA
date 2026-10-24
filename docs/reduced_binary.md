@@ -36,7 +36,7 @@ The interface is unchanged:
 
 ```text
 reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]
-reduced-codec decode [--max-symbols COUNT] [INPUT|-]
+reduced-codec decode [--strict] [--max-symbols COUNT] [INPUT|-]
 ```
 
 Omitted `INPUT` or `-` reads stdin. `--bits=4` and `--bits=6` are accepted.
@@ -53,6 +53,10 @@ the decoder write clean steps until the disk is full, and xz shrinks such a
 file to almost nothing. The default only catches impossible lengths: at N=13 it
 still allows 80,951,270,400 symbols, and from N=20 on N * N! exceeds the 64-bit
 length field, so only `--max-symbols` limits those files.
+
+`--strict` accepts only the canonical file of a word, the one encode writes
+without `--bits`, and refuses every other valid file with a message starting
+`strict:`. See [Canonical files](#canonical-files).
 
 Input labels are the first N characters of `123456789ABCDEFGHIJKLMNOPQRSTUVW`,
 or `0123456789ABCDEFGHIJKLMNOPQRSTUV` with `-z`, for N=1..32. Each uppercase
@@ -80,7 +84,7 @@ Its interface is:
 
 ```text
 spra-xz.sh encode [CODEC_OPTIONS] N [INPUT|-] [-- XZ_ARGS...]
-spra-xz.sh decode [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
+spra-xz.sh decode [--strict] [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 ```
 
 Decode options before `--` go to `reduced-codec decode`.
@@ -140,7 +144,8 @@ offset: N - copy_distance, encoded as signed B-bit two's complement
 ```
 
 The encoder chooses the nearest earlier occurrence of the dirty symbol. The
-decoder permits any available backward reference that produces a dirty window.
+decoder permits any available backward reference that produces a dirty window
+(`--strict` accepts only the nearest one).
 Clean steps are unique: emit the symbol missing from the preceding N-1 symbols.
 Once a clean window is established, further clean steps copy at distance N.
 After the last logical tuple, decoded length determines the trailing clean run.
@@ -179,6 +184,44 @@ The comparison uses the full `(depth, offset)` tuple. RLE is always active and
 needs only the previous tuple and one bounded counter. It never increases the
 number of physical tokens relative to logical tuples. Final xz size can still
 increase on some inputs because the byte patterns and xz parsing change.
+
+## Canonical files
+
+One word has many valid SPRA files: `02 20` and `02 10 10` are both four-bit
+bodies of `11111` at N=3, a copy may use an older occurrence of the same symbol,
+and a word that fits four-bit fields can also be written with six-bit fields.
+Exactly one file per word is canonical. It is the file `reduced-codec encode`
+writes without `--bits`, and `decode --strict` accepts only that file. For a
+normalized word `w` of length L, with positions counted from 1:
+
+1. Header: version `0x02`; layout `0x44` when every logical tuple fits
+   four-bit fields (depth 0..15 and offset -8..+7), otherwise `0x66`; flags bit
+   0 set exactly when the word uses zero-based labels; N; L; and the number of
+   logical tuples (dirty windows).
+2. Seed: the IDs of the first `min(L, N-1)` symbols.
+3. Logical tuples: one for each dirty window, in order. For the window ending at
+   position `p`, depth is the number of clean windows since the previous dirty
+   window (or since the first window), and offset is `N - (p - q)`, where `q` is
+   the position of the **nearest** earlier occurrence of `w[p]`.
+4. Physical tokens: split the logical tuples into maximal runs of equal
+   `(depth, offset)`. A run of length r becomes one literal, then
+   `floor((r-1)/(M-1))` markers `(M-1, 0)`, then one marker
+   `((r-1) mod (M-1), 0)` if that count is not zero (`M = 2^B - 1`).
+5. Packing as in [Wire format](#wire-format): MSB first, zero padding, nothing
+   after the last token.
+
+The letters, N and the label set fix the canonical file. For a
+superpermutation, N is its number of distinct symbols and the letters show the
+label set (`0` occurs only in zero-based words), so each superpermutation has
+exactly one canonical file. Other strings can also be written with a larger N.
+
+Among the files the decoder accepts, `--strict` refuses: version `0x01`; a copy
+that does not use the nearest occurrence; a literal equal to the previous
+logical tuple; a marker that follows a marker with a count below `M-1`; and
+six-bit fields when every tuple fits four bits. The last check needs all
+tuples, so it fails after the output up to the trailing clean run has been
+written; as with any error, discard the output. `encode --bits 6` on a word
+that fits four bits writes a valid file that is not canonical.
 
 ## Wire format
 
