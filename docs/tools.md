@@ -80,7 +80,8 @@ bytes when they fit, six-bit bytes otherwise) and `--strict` (encoder output
 passes; split markers, repeated literals, far copies and needless six-bit
 fields are refused). Shell
 checks cover CLI errors, paths with spaces, xz failures, N=5..9 corpus samples,
-benchmark options/baselines and compressed prefixes. JSON checks use PowerShell
+benchmark options/baselines and compressed prefixes, and the wrapper's
+default xz settings. JSON checks use PowerShell
 on Windows or `jq` elsewhere.
 
 Paint tests compare statistics against an independent C++ window-set oracle

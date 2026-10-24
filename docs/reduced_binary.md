@@ -90,7 +90,9 @@ spra-xz.sh decode [--strict] [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 Decode options before `--` go to `reduced-codec decode`.
 
 Arguments after `--` are passed separately and unchanged to xz; for example,
-`-- -6e --check=crc32`. Omit them to use xz defaults. Decode also accepts xz
+`-- -6e --check=crc32`. Without them, encode uses
+`-T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0` (see below); any arguments
+after `--` replace that default, so `-- -6` gives plain xz defaults. Decode also accepts xz
 options after `--`, such as `--memlimit-decompress=64MiB`. Named source files are
 preserved; the wrapper writes to stdout and does not open an output filename.
 It requires Bash and xz on PATH. `SPRA_CODEC=/path/to/reduced-codec` overrides
@@ -104,6 +106,33 @@ archive or the decoder may have written a prefix before the error was detected.
 Use different input and output paths; shell redirection truncates its target
 before the wrapper starts. Standard `XZ_DEFAULTS` and `XZ_OPT` settings apply to
 the wrapper; the benchmark clears those variables for reproducible comparisons.
+
+#### Default xz settings
+
+SPRA bytes are packed tokens, not text. With `lc=0,lp=0,pb=0` LZMA stops using
+the previous byte and the byte position as context, which only splits its
+statistics on these files, and a 256 MiB dictionary reaches repeats far back in
+the N=13 and N=14 files (`-9e` has 64 MiB, `-6e` 8 MiB). `-T1` keeps the whole
+file in one xz block, so matches can reach across all of it. Decompression
+needs about 257 MiB of memory instead of 9 MiB for `-6e`; compression takes
+about as long as `-9e` (26 s for an N=13 file, 5 minutes for N=14 on my
+machine).
+
+Every `.spra.xz` file of the corpus, decompressed and recompressed with xz
+5.8.2 (bytes summed per N; all round trips exact):
+
+| N | Files | Stored (`-6e`) | `-9e` | New default | New / stored |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 9 | 7 | 2,532 | 2,532 | 2,472 | 0.976 |
+| 10 | 6 | 12,644 | 12,644 | 12,312 | 0.974 |
+| 11 | 8 | 98,144 | 98,144 | 96,708 | 0.985 |
+| 12 | 9 | 885,716 | 774,204 | 771,344 | 0.871 |
+| 13 | 5 | 5,115,548 | 2,915,048 | 2,516,184 | 0.492 |
+| 14 | 1 | 9,679,980 | 7,830,260 | 6,143,360 | 0.635 |
+
+The public N=13 word 6,747,802,319 goes from 1,262,104 bytes (stored) and
+804,656 (`-9e`) to 750,056. The existing archives are unchanged; recompressing
+them is optional (`xz -dc OLD | xz -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0`).
 
 The equivalent explicit pipeline is:
 

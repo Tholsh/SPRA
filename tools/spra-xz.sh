@@ -9,7 +9,8 @@ usage() {
 
 Encode a word to SPRA 0.2 plus xz, or decode a .spra.xz archive.
 Both commands write only their result to stdout and preserve input files.
-Omitted INPUT or '-' reads stdin. Pass xz options after '--', e.g. -- -6e.
+Omitted INPUT or '-' reads stdin. Pass xz options after '--', e.g. -- -6e;
+they replace the encode default, -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0.
 SPRA_CODEC overrides the codec executable; otherwise build/ and the repository
 root are searched. Build tools/reduced_codec.cpp first; see docs/corpus.md.'
 }
@@ -31,6 +32,9 @@ while (($#)) && [[ $1 != -- ]]; do
 done
 if (($#)); then shift; fi
 xz_args=("$@")
+# SPRA bytes are tokens, not text: literal context and position bits only cost
+# space, and a large dictionary reaches repeats far back. One thread, one block.
+default_xz_args=(-T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0)
 # Decode options go to the codec; at most one other argument names the input.
 decode_args=()
 input=-
@@ -78,6 +82,7 @@ if [[ -z $codec ]]; then
 fi
 
 if [[ $operation == encode ]]; then
+    if ((${#xz_args[@]} == 0)); then xz_args=("${default_xz_args[@]}"); fi
     "$codec" encode "${codec_args[@]}" | xz -c "${xz_args[@]}"
 else
     xz -dc "${xz_args[@]}" -- "$input" | "$codec" decode ${decode_args[@]+"${decode_args[@]}"}

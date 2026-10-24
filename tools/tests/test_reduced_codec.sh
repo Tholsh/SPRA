@@ -27,6 +27,12 @@ printf bad > "$work/bad"
 if bash "$wrapper" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 if "$SPRA_CODEC" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 [[ ! -s $work/out ]]
+# Without xz arguments, encode uses -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0.
+bash "$wrapper" encode 3 "$work/input word.txt" > "$work/default.xz"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" | xz -c -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0 | cmp - "$work/default.xz"
+xz --robot --list -vv "$work/default.xz" | grep -q 'dict=256MiB'
+bash "$wrapper" encode 3 "$work/input word.txt" -- -6e > "$work/explicit.xz"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" | xz -c -6e | cmp - "$work/explicit.xz"
 # Without --bits, a word that four-bit fields cannot hold gets six-bit fields and a note.
 printf '12111111111112' > "$work/six.txt"
 "$SPRA_CODEC" encode 3 "$work/six.txt" > "$work/auto.spra" 2> "$work/error"
