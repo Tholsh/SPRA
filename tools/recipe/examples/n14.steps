@@ -1,0 +1,7 @@
+unpack base8.sel base8
+transport base8 1 t9
+patch t9 n10.diff n10
+unpack b73c.blk b73c
+hybrid3 base8 n10 3 b73c selC --fsd
+plan plan.plc plan
+gen14 selC plan word

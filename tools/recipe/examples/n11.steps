@@ -1,0 +1,8 @@
+unpack base8.sel base8
+transport base8 2 t10
+patch t10 in56.diff in56
+unpack b72.blk b72
+gregion in56 b72 sel connect_a.json connect_b.json
+plan plan.plc plan
+geng sel base table
+applyplan base table plan word

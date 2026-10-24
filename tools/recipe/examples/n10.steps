@@ -1,0 +1,6 @@
+unpack base8.sel base8
+transport base8 1 t9
+patch t9 n10.diff sel
+plan plan.plc plan
+geng sel base table
+applyplan base table plan word
