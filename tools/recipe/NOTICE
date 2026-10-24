@@ -1,0 +1,37 @@
+Recipe containers: third-party code and data
+
+recipe.py, make_examples.sh, examples/*.steps, tools/tests/test_recipe_container.sh and
+docs/recipe_container.md were written for this repository by Jakub Halfar and are under the GNU General Public
+License, version 3 or later, like the rest of the repository.
+
+tools/recipe/gen/ holds unchanged copies of programs from Jakub Halfar's repository
+https://github.com/jhalfar/superpermutations, commit 771f9dcc7a751ea8a6c16847fdd64df61cb325a9:
+
+  gen/pantone_py/gcore.py        selection/gcore.py
+  gen/pantone_py/hybrid3.py      selection/hybrid3.py
+  gen/pantone_py/build12.py      selection/build12.py
+  gen/pantone_py/gregion.py      selection/gregion.py
+  gen/pantone_py/untransport.py  selection/untransport.py     (used by make_examples.sh only)
+  gen/pantone_py/geng.py         reproduce/tools/geng.py
+  gen/pantone_py/gen12.py        reproduce/tools/gen12.py
+  gen/pantone_py/applyplan.py    reproduce/tools/applyplan.py
+  gen/gen14/gen14.c              recipes/n14/gen14.c
+
+Copyright 2026 Jakub Halfar. Licensed under the Apache License, Version 2.0; a copy is in LICENSE-Apache-2.0 next to
+this file. Apache-2.0 code may be included in a GPL-3.0 work; these files keep their Apache-2.0 terms. The files are
+not modified: a decoder pins them by the SHA-256 of their sources, so a change to any of them is a new generator
+version (docs/recipe_container.md).
+
+The construction these programs implement (2-loops, slices, the selection, the completion, the transport and the
+closed trails) is Jay Pantone's, https://github.com/jaypantone/superperm-upper-43-80 (Apache License 2.0). No file
+of his repository is included. gen14.c can also write the order of William Echols's 2-lift (recipe
+"superperm-2lift/1"); it was written from its author's own definitions, and no code of Echols's repository is used.
+
+The example containers in words/10 to words/14 hold data of jhalfar/superpermutations (Apache License 2.0): the
+selection on 8 symbols, which is derived from Pantone's tools/construction-input.txt (untransport.py, twice), the
+differences of the published selections against its transports, the block solutions, the n = 11 connection files
+and the plans of the published words. Credits for those words, as in the NOTICE of jhalfar/superpermutations: the
+construction is Pantone's; the structure of the n = 10 word and the order of its groups were read off rumstd's
+n = 10 word; the n = 12 and n = 13 words use two kinds of move that others found, re-opening a block of closed
+trails (William Echols) and moving one closed trail and choosing the cut at which it is opened (Theo H.); publishing
+an n = 14 word as a generator and a plan follows William Echols's 2-lift recipe.
