@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,15 +39,6 @@ bool is_dirty(std::span<const Symbol> window) {
         seen |= bit;
     }
     return false;
-}
-
-uint8_t which_index(std::span<const Symbol> bigwindow, std::size_t n) {
-    for (std::size_t index = bigwindow.size() - 2; index > 0; --index) {
-        if (bigwindow[index] == bigwindow.back()) {
-            return static_cast<uint8_t>(2 * n - index);
-        }
-    }
-    return 0;
 }
 
 // Lehmer rank of a clean window. Symbols are normalized to 0..N-1, so ranking
@@ -115,6 +107,7 @@ int main(int argc, char** argv) try {
                       << "  -s  statistics only (required above N=9)\n"
                          "  -m  mark each dirty character as [X] instead of using ANSI color\n"
                          "  -z, --zero-based  use 0123456789ABC instead of 123456789ABCD\n"
+                         "  Tuple fields are eight bits; offsets print as signed decimal numbers.\n"
                          "  N must be between 1 and 13; uppercase letters are symbols 10 onward.\n";
             return 0;
         }
@@ -158,8 +151,9 @@ int main(int argc, char** argv) try {
     // keeps a rolling 2N-symbol history plus one coverage bit per permutation.
     std::vector<Symbol> symbols;
     std::vector<bool> dirty_at;
-    std::vector<uint8_t> waste_indexes;
+    std::vector<std::optional<std::int64_t>> waste_offsets;
     std::vector<std::size_t> waste_depths;
+    std::array<std::size_t, MAX_N> last_seen{};
     std::array<Symbol, 2 * MAX_N> history{};
     std::size_t history_size = 0, length = 0, dirty_count = 0, distinct = 0;
     std::size_t dirty_run = 0, clean_run = 0, max_dirty_run = 0, max_clean_run = 0;
@@ -184,6 +178,8 @@ int main(int argc, char** argv) try {
             }
             const Symbol symbol = static_cast<Symbol>(label);
             ++length;
+            const auto previous = last_seen[symbol];
+            last_seen[symbol] = length;
             if (!short_output) {
                 symbols.push_back(symbol);
                 dirty_at.push_back(false);
@@ -202,7 +198,8 @@ int main(int argc, char** argv) try {
                 max_dirty_run = std::max(max_dirty_run, dirty_run);
                 if (!short_output) {
                     dirty_at.back() = true;
-                    waste_indexes.push_back(which_index({history.data(), history_size}, n));
+                    waste_offsets.push_back(previous ? std::optional<std::int64_t>(
+                        static_cast<std::int64_t>(n) - static_cast<std::int64_t>(length - previous)) : std::nullopt);
                     waste_depths.push_back(clean_run);
                 }
                 clean_run = 0;
@@ -240,10 +237,22 @@ int main(int argc, char** argv) try {
             }
         }
         if (red_on) std::cout << RESET;
-        std::cout << "\n\nreduced_alphabet_words:\n" << std::hex;
-        for (std::size_t i = 0; i < waste_indexes.size(); ++i) {
-            std::cout << '[' << waste_depths[i] << ':' << static_cast<unsigned>(waste_indexes[i]) << "] ";
+        const auto fits = [&](std::size_t i) {
+            return waste_depths[i] <= 255 && waste_offsets[i]
+                && *waste_offsets[i] >= -128 && *waste_offsets[i] <= 127;
+        };
+        bool unrepresentable = false;
+        std::cout << "\n\nreduced_alphabet_words:\n" << std::dec;
+        for (std::size_t i = 0; i < waste_offsets.size(); ++i) {
+            std::cout << '[' << waste_depths[i] << ':';
+            if (waste_offsets[i] && *waste_offsets[i] >= -128 && *waste_offsets[i] <= 127)
+                std::cout << *waste_offsets[i];
+            else std::cout << '?';
+            std::cout << ']';
+            if (!fits(i)) { std::cout << '!'; unrepresentable = true; }
+            std::cout << ' ';
         }
+        if (unrepresentable) std::cerr << "paint-waste: warning: pairs marked ! do not fit eight-bit fields; ? means no representable copy offset\n";
         std::cout << "\n\nstatistics:\n";
     }
     const std::size_t windows = length >= n ? length - n + 1 : 0;

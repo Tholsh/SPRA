@@ -40,7 +40,7 @@ cmd /c '.\build\reduced_codec.exe encode --bits 6 5 words\5\153\153-recursive.tx
 cmd /c '.\build\reduced_codec.exe decode word-n5.spra > restored-n5.txt'
 ```
 
-Check the exit status before keeping output; errors go to stderr. See the [binary format and run guide](docs/spra.md) for stdin and xz pipelines, zero-based labels, the complete header and decoding rules, representability limits, and regression checks. The painted-word tool and its historical displayed indices remain separate.
+Check the exit status before keeping output; errors go to stderr. See the [binary format and run guide](docs/spra.md) for stdin and xz pipelines, zero-based labels, the complete header and decoding rules, representability limits, and regression checks. The painted-word tool displays the same logical tuple values.
 
 The optional [byte-pair layer](docs/bpe_streaming.md), based on Halfar's PR #2,
 now streams by default using a bounded training prefix and fixed pair rules.
@@ -79,7 +79,7 @@ For example, `123121321` becomes `012010210` and converts back exactly. Folder c
 
 [`tools/paint_waste.cpp`](tools/paint_waste.cpp) builds the `paint-waste` tool. It reads a word from standard input, ignores whitespace, and supports `1 <= N <= 13` on a 64-bit platform. Its default labels are `123456789ABCD`; `-z` / `--zero-based` selects `0123456789ABC`. Use the first N characters of the selected alphabet, with uppercase letters.
 
-For each length-`N` window, it marks the final character red if the window contains repeated symbols. It prints the colored word, reduced-alphabet `[depth:index]` pairs (in hexadecimal), and then decimal statistics to stdout. Statistics include length, clean/dirty windows and runs, distinct/missing permutations, and binary `valid_superpermutation` coverage. Use `-s` to print only statistics. See the [full run guide and field definitions](docs/paint_waste.md).
+For each length-`N` window, it marks the final character red if the window contains repeated symbols. It prints the colored word, reduced-alphabet `[depth:offset]` pairs (in decimal, with signed offsets), and then decimal statistics to stdout. Statistics include length, clean/dirty windows and runs, distinct/missing permutations, and binary `valid_superpermutation` coverage. Use `-s` to print only statistics. See the [full run guide and field definitions](docs/paint_waste.md).
 
 Run these commands from the repository root with a C++20 compiler such as GCC. In PowerShell with MinGW GCC:
 
@@ -135,10 +135,10 @@ xz < words/5/153/153-recursive.txt > word-n5.txt.xz
 xz -d < word-n5.txt.xz | ./paint-waste 5
 ```
 
-`-dc` decompresses to stdout and preserves the archive. To validate a zero-based N=11 corpus word directly:
+`-dc` decompresses to stdout and preserves the archive. To validate the current one-based N=11 SPRA archive, decode it before passing the word to paint-waste:
 
 ```sh
-xz -dc words/11/43930624/superpermutation-11-43930624.txt.xz | ./paint-waste -z -s 11
+bash tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz | ./paint-waste -s 11
 ```
 # Improvement from V0.1
 

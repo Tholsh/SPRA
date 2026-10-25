@@ -56,11 +56,18 @@ int main(int argc,char** argv) try {
     for(bool zero:{false,true})for(unsigned n=1;n<=6;++n){std::string alphabet=(zero?"012345":"123456");alphabet.resize(n);oracle("",n,zero);oracle(alphabet.substr(0,n-1),n,zero);oracle(alphabet+alphabet+alphabet,n,zero);for(int trial=0;trial<5;++trial){std::string word;for(int i=0;i<(zero?150:80);++i)word+=alphabet[random()%n];oracle(word,n,zero);}}
     for(unsigned n:{10u,11u,12u,13u})for(bool zero:{false,true})oracle(std::string(zero?"0123456789ABC":"123456789ABCD").substr(0,n),n,zero);
     std::string clean;for(int i=0;i<40000;++i)clean+="12";auto large=stats(clean,2);check(large["clean"]==79999&&large["distinct_permutations"]==2&&large["repeated_permutation_windows"]==79997,"buffer boundary");
-    std::string depth;for(int i=0;i<250;++i)depth+="12";depth+="11";auto longrun=run(depth,{"2"});check(longrun.out.find("[1f4:2]")!=std::string::npos&&stats(depth,2)["max_clean_run"]==500,"long depth");
+    std::string depth;for(int i=0;i<250;++i)depth+="12";depth+="11";auto longrun=run(depth,{"2"});check(longrun.out.find("[500:1]!")!=std::string::npos&&stats(depth,2)["max_clean_run"]==500,"long depth remains diagnostic");
+    check(run("123121321",{"-m","3"}).out.find("[3:1]")!=std::string::npos,"codec nearest offset");
+    check(run("121111112",{"3"}).out.find("[0:-4]")!=std::string::npos,"signed decimal negative offset");
+    auto distant=run("12111111111112",{"3"});check(distant.status==0&&distant.err.empty()&&distant.out.find("[0:-9]")!=std::string::npos,"eight-bit distant occurrence");
+    auto minimum=run("12"+std::string(130,'1')+"2",{"3"});check(minimum.err.empty()&&minimum.out.find("[0:-128]")!=std::string::npos,"eight-bit minimum signed offset");
+    auto outside=run("12"+std::string(131,'1')+"2",{"3"});check(!outside.err.empty()&&outside.out.find("[0:?]!")!=std::string::npos,"offset does not wrap outside eight bits");
+    check(run("1112",{"4"}).out.find("[0:?]!")!=std::string::npos,"missing copy reference");
+    check(run("11111",{"3"}).out.find("[0:2] [0:2] [0:2]")!=std::string::npos,"logical tuples retain repeated pairs");
     for(auto [word,painted,n,zero]:std::vector<std::tuple<std::string,std::string,unsigned,bool>>{{"123121321","12312[1]321",3,false},{"012010210","01201[0]210",3,true},{"1111","11[1][1]",3,false},{"123","123",3,false},{"","",3,false}}){
         std::vector<std::string> args={std::to_string(n)};if(zero)args.push_back("-z");auto normal=run(word,args);args.push_back("-m");auto bracket=run(word,args);check(bracket.status==0&&bracket.err.empty()&&bracket.out.substr(0,bracket.out.find('\n'))==painted&&bracket.out.find('\033')==std::string::npos,"bracket painting");check(bracket.out.substr(bracket.out.find('\n'))==normal.out.substr(normal.out.find('\n')),"paint statistics agreement");args.push_back("-s");auto short_mode=run(word,args);check(bracket.out.substr(bracket.out.find("statistics:\n")+12)==short_mode.out,"short statistics agreement");
     }
-    for(auto args:std::vector<std::vector<std::string>>{{},{"0"},{"14"},{"3foo"},{"3","--unknown"},{"-s","-s","3"},{"-z","--zero-based","3"},{"-m","-m","3"}})check(run("123",args).status!=0,"invalid arguments");
+    for(auto args:std::vector<std::vector<std::string>>{{},{"0"},{"14"},{"3foo"},{"3","--unknown"},{"-s","-s","3"},{"-z","--zero-based","3"},{"-m","-m","3"},{"--bits","3"},{"--bits=5","3"},{"--bits=4","--bits=6","3"}})check(run("123",args).status!=0,"invalid arguments");
     for(auto word:{"124","120","12x"}){auto r=run(word,{"-m","3"});check(r.status!=0&&r.out.empty()&&!r.err.empty(),"invalid input");}
     check(run("",{"--help"}).status==0,"help");
     std::cout<<"Paint: "<<checks<<" checks passed\n";return 0;

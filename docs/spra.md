@@ -178,8 +178,10 @@ decoder permits any available backward reference that produces a dirty window
 Clean steps are unique: emit the symbol missing from the preceding N-1 symbols.
 Once a clean window is established, further clean steps copy at distance N.
 After the last logical tuple, decoded length determines the trailing clean run.
-The signed offset differs from the historical diagnostic index printed by
-`paint-waste`; those printed pairs cannot be packed directly into SPRA.
+`paint-waste` prints these same logical `[depth:offset]` tuples, with offsets
+shown as signed decimal numbers and checked against eight-bit field ranges.
+It keeps one pair per dirty window;
+the binary codec additionally applies tuple RLE and bit packing.
 
 Positive depth with offset zero cannot describe a dirty tuple: generating a clean
 window and then copying at distance N continues the clean sequence. SPRA 0.2
