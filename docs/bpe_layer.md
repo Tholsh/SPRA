@@ -152,50 +152,6 @@ For `11111` (SPRA body `02 20`, three copies of `(0,+2)`) the run is
 `03 01 01`, one rule `00 01` (symbol 2) and the body `02 02 02`, where the first
 `02` is the body length.
 
-## Sizes and times
-
-Every chain below starts from the same SPRA 0.2 file and ends with the same xz
-settings, `-T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0`. Bytes are summed
-per N. "Corpus" is every `.spra.xz` file in `words/`; "public" is the words of
-github.com/jhalfar/superpermutations that are not in the corpus, encoded with
-`reduced-codec` (four-bit fields where they fit). Every round trip gave the
-original SPRA file byte for byte. Measured with xz 5.8.2 on Windows.
-
-| Words | N | Files | SPRA + xz | mlb2 + xz | SPBE + xz | SPBE / SPRA + xz |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| corpus | 9 | 7 | 2,472 | 2,532 | 2,476 | 1.00 |
-| corpus | 10 | 6 | 12,312 | 9,836 | 9,692 | 0.79 |
-| corpus | 11 | 8 | 96,708 | 44,356 | 43,920 | 0.45 |
-| corpus | 12 | 9 | 771,344 | 288,128 | 281,588 | 0.37 |
-| corpus | 13 | 5 | 2,516,184 | 660,176 | 559,676 | 0.22 |
-| corpus | 14 | 1 | 6,143,360 | 883,476 | 859,588 | 0.14 |
-| public | 8 | 8 | 1,736 | 2,308 | 2,004 | 1.15 |
-| public | 11 | 6 | 68,728 | 35,632 | 34,804 | 0.51 |
-| public | 12 | 6 | 480,016 | 175,724 | 175,304 | 0.37 |
-| public | 13 | 9 | 5,576,776 | 1,447,960 | 1,299,776 | 0.23 |
-
-For one word: the public N=13 word 6,747,802,319 is 804,656 bytes as SPRA plus
-`xz -9e`, 750,056 with the xz settings above, and 176,928 as SPBE plus xz.
-Below N=10 the tables cost more than they save, so plain SPRA plus xz should
-stay the format there; a reader could choose by file type.
-
-Times in wall seconds, counted from the SPRA file (the codec's own time is the
-same for every chain), on a busy machine at idle priority, so only the ratios
-mean much:
-
-| Word | SPRA + xz encode / decode | mlb2 + xz | SPBE + xz |
-| --- | ---: | ---: | ---: |
-| N=12, 522,736,969 | 2.4 / 0.1 | 0.7 / 0.1 | 0.5 / 0.1 |
-| N=13, 6,747,802,319 | 27.6 / 0.3 | 7.4 / 1.0 | 4.1 / 0.9 |
-| N=14, 93,904,804,425 | 311 / 2.1 | 94 / 15 | 50 / 13 |
-
-SPBE encodes faster than xz alone because xz then sees a file 50 to 60 times
-smaller. Decoding is slower than xz alone, because the layer writes the whole
-SPRA file again, but it is short next to decoding the letters themselves.
-
-Memory: the encoder keeps one byte per run in memory, 3.1 GB at its peak for
-N=14; the decoder needs about 1 MB besides xz's 257 MiB.
-
 ## Regression checks
 
 ```sh
