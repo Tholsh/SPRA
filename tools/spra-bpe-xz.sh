@@ -14,6 +14,9 @@ BPE_OPTIONS: --train-runs COUNT, --min-count COUNT, or --whole-file (whole-file 
 encode: word -> .bpe.xz       decode: .bpe.xz -> word
 pack:   .spra.xz -> .bpe.xz   unpack: .bpe.xz -> raw SPRA 0.2 (pipe to xz for .spra.xz)
 Every command writes only its result to stdout and preserves input files.
+encode measures length, logical tuples and width before streaming SPRA to BPE.
+Pass --length COUNT --tuples COUNT --bits 4|6 to skip this input pass;
+otherwise stdin is saved temporarily for rereading.
 Omitted INPUT or '-' reads stdin. xz options after '--' replace the default
 -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0 when compressing, and go to
 xz -d when decompressing. SPRA_CODEC and SPRA_BPE override the executables;
@@ -87,7 +90,7 @@ if [[ $operation != encode ]]; then
     done
 fi
 case $operation in
-    encode) "$codec" encode "${tool_args[@]}" | "$bpe" encode "${bpe_args[@]}" | xz -c "${pack_args[@]}";;
+    encode) SPRA_CODEC="$codec" bash "$script_dir/spra-xz.sh" encode-raw "${tool_args[@]}" | "$bpe" encode "${bpe_args[@]}" | xz -c "${pack_args[@]}";;
     decode) xz -dc ${xz_args[@]+"${xz_args[@]}"} -- "$input" | "$bpe" decode "${limits[@]}" | "$codec" decode "${decode_args[@]}" "${limits[@]}";;
     pack) xz -dc -- "$input" | "$bpe" encode "${bpe_args[@]}" | xz -c "${pack_args[@]}";;
     unpack) xz -dc ${xz_args[@]+"${xz_args[@]}"} -- "$input" | "$bpe" decode "${limits[@]}";;

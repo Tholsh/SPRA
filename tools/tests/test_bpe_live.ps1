@@ -58,6 +58,11 @@ $liveXz=Test-Live @(@{Exe=$Xz;Args='-c -T1 --block-size=256KiB --lzma2=preset=9e
 $liveXzDecoded=Test-Live @(@{Exe=$Xz;Args='-dc'}) $liveXz $true
 $sha=[Security.Cryptography.SHA256]::Create()
 try {
+    # Supplied metadata lets the raw SPRA encoder emit body payload before EOF.
+    $raw=[Text.Encoding]::ASCII.GetBytes(('1' * 5000000))
+    $rawSpra=Test-Live @(@{Exe=$Codec;Args='encode --length 5000000 --tuples 4999998 --bits 4 3'}) $raw $true
+    $rawRestored=Test-Live @(@{Exe=$Codec;Args='decode --max-symbols 5000000'}) $rawSpra $true
+    if([BitConverter]::ToString($sha.ComputeHash($raw)) -ne [BitConverter]::ToString($sha.ComputeHash($rawRestored))){throw 'Live raw SPRA round trip mismatch'}
     if([BitConverter]::ToString($sha.ComputeHash($bytes)) -ne [BitConverter]::ToString($sha.ComputeHash($decoded))){throw 'Live SPBE round trip mismatch'}
     if([BitConverter]::ToString($sha.ComputeHash($encoded)) -ne [BitConverter]::ToString($sha.ComputeHash($liveXzDecoded))){throw 'Live xz round trip mismatch'}
 }finally{$sha.Dispose()}
@@ -65,3 +70,4 @@ $compressed=[IO.File]::ReadAllBytes($Archive)
 [void](Test-Live @(@{Exe=$Xz;Args='-dc'},@{Exe=$Tool;Args='decode'},@{Exe=$Codec;Args='decode'}) $compressed $false)
 Write-Output 'Live encode, live decode, and .bpe.xz -> raw word all produced payload before input EOF.'
 Write-Output 'xz compression with 256KiB blocks also produced payload before EOF and round-tripped exactly.'
+Write-Output 'Raw SPRA encoding with supplied metadata produced body payload before EOF and round-tripped exactly.'
