@@ -57,14 +57,14 @@ From the repository root:
 
 ```sh
 mkdir -p build
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 ```
 
 With MinGW GCC in PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
 ```
 
 MSYS2 or Git Bash supplies the shell tools on Windows. Set `SPRA_CODEC` to use
@@ -142,8 +142,8 @@ binary pipeline through `cmd /c`:
 
 ```powershell
 bash -c 'bash tools/spra-xz.sh decode words/9/408731/superpermutation-9-408731.spra.xz > build/raw-n9.txt'
-cmd /c 'xz -dc words\9\408731\superpermutation-9-408731.spra.xz | .\build\reduced-codec.exe decode > build\raw-n9.txt'
+cmd /c 'xz -dc words\9\408731\superpermutation-9-408731.spra.xz | .\build\reduced_codec.exe decode > build\raw-n9.txt'
 ```
 
 Check the pipeline's exit status before using redirected output. See the
-[codec guide](reduced_binary.md) for encoding options and format limits.
+[codec guide](spra.md) for encoding options and format limits.

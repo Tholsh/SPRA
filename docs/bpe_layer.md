@@ -8,7 +8,7 @@ decoding supports both modes. Recipes were not imported.
 
 The original optional layer does not change SPRA 0.2: an SPBE
 file holds the logical tuples of one SPRA 0.2 file, and decoding it gives back
-that SPRA file byte for byte (for every file `reduced-codec encode` writes).
+that SPRA file byte for byte (for every file `reduced_codec encode` writes).
 This document retains the original format and whole-file benchmark details;
 the streaming encoder is documented separately above.
 
@@ -41,7 +41,7 @@ nested block tables instead of one table of pairs.
 
 ```sh
 mkdir -p build
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 g++ -std=c++20 -O2 tools/bpe_layer.cpp -o build/spra-bpe
 
 # A word to .bpe.xz and back.
@@ -71,7 +71,7 @@ and output written before an error must be discarded.
 
 `spra-bpe decode` refuses an SPRA header length above N * N! unless
 `--max-symbols` allows it. It checks the SPBE structure and the SPRA header,
-but not the word itself: `reduced-codec decode` checks clean and dirty windows
+but not the word itself: `reduced_codec decode` checks clean and dirty windows
 when it decodes the result. A word with more than 256 distinct runs cannot be
 written as SPBE; the encoder says so, and SPRA plus xz stays the format for it.
 
@@ -103,7 +103,7 @@ Then, with nothing after them:
 Decoding expands every body byte through the rules down to runs. Concatenated,
 the runs give the logical tuple sequence; its length must equal the logical
 tuple count of the SPRA header. The decoder writes the SPRA header and seed and
-then the tuples as SPRA 0.2 tokens the way `reduced-codec encode` writes them:
+then the tuples as SPRA 0.2 tokens the way `reduced_codec encode` writes them:
 a literal at the start of every maximal run of equal tuples, then markers of
 `2^B - 2` repeats, then one marker with the remainder if it is not zero; MSB
 first, zero padding.

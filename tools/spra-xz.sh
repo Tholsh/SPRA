@@ -72,7 +72,9 @@ else
 fi
 codec=${SPRA_CODEC:-}
 if [[ -z $codec ]]; then
-    for candidate in "$script_dir/../build/reduced-codec"{,.exe} \
+    for candidate in "$script_dir/../build/reduced_codec"{,.exe} \
+                     "$script_dir/../reduced_codec"{,.exe} \
+                     "$script_dir/../build/reduced-codec"{,.exe} \
                      "$script_dir/../reduced-codec"{,.exe}; do
         if [[ -x $candidate ]]; then
             codec=$candidate

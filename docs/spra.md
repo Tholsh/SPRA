@@ -18,21 +18,21 @@ From the repository root, with a C++20 compiler:
 
 ```sh
 mkdir -p build
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
-./build/reduced-codec encode 5 words/5/153/153-recursive.txt > word-n5.spra
-./build/reduced-codec encode --bits 6 5 words/5/153/153-recursive.txt > word-n5-six.spra
-./build/reduced-codec decode word-n5.spra > restored-n5.txt
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
+./build/reduced_codec encode 5 words/5/153/153-recursive.txt > word-n5.spra
+./build/reduced_codec encode --bits 6 5 words/5/153/153-recursive.txt > word-n5-six.spra
+./build/reduced_codec decode word-n5.spra > restored-n5.txt
 ```
 
 On Windows, create `build/` and compile with MinGW GCC using
-`g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe`.
+`g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe`.
 Alternatively compile directly into the repository root:
 
 The interface is unchanged:
 
 ```text
-reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]
-reduced-codec decode [--strict] [--max-symbols COUNT] [INPUT|-]
+reduced_codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]
+reduced_codec decode [--strict] [--max-symbols COUNT] [INPUT|-]
 ```
 
 Omitted `INPUT` or `-` reads stdin. `--bits=4` and `--bits=6` are accepted.
@@ -87,7 +87,7 @@ spra-xz.sh encode [CODEC_OPTIONS] N [INPUT|-] [-- XZ_ARGS...]
 spra-xz.sh decode [--strict] [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 ```
 
-Decode options before `--` go to `reduced-codec decode`.
+Decode options before `--` go to `reduced_codec decode`.
 
 Arguments after `--` are passed separately and unchanged to xz; for example,
 `-- -6e --check=crc32`. Without them, encode uses
@@ -95,7 +95,7 @@ Arguments after `--` are passed separately and unchanged to xz; for example,
 after `--` replace that default, so `-- -6` gives plain xz defaults. Decode also accepts xz
 options after `--`, such as `--memlimit-decompress=64MiB`. Named source files are
 preserved; the wrapper writes to stdout and does not open an output filename.
-It requires Bash and xz on PATH. `SPRA_CODEC=/path/to/reduced-codec` overrides
+It requires Bash and xz on PATH. `SPRA_CODEC=/path/to/reduced_codec` overrides
 codec discovery; otherwise it searches `build/` then the repository root,
 including `.exe` names. Script discovery is independent of the current directory.
 
@@ -138,8 +138,8 @@ The equivalent explicit pipeline is:
 
 ```sh
 set -o pipefail
-./build/reduced-codec encode 5 words/5/153/153-recursive.txt | xz -6e > word-n5.spra.xz
-xz -dc word-n5.spra.xz | ./build/reduced-codec decode > restored-n5.txt
+./build/reduced_codec encode 5 words/5/153/153-recursive.txt | xz -6e > word-n5.spra.xz
+xz -dc word-n5.spra.xz | ./build/reduced_codec decode > restored-n5.txt
 ```
 
 ### PowerShell binary redirection
@@ -150,14 +150,14 @@ The codec sets its Windows streams to binary mode itself.
 
 ```powershell
 New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe
-cmd /c '.\build\reduced-codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
+cmd /c '.\build\reduced_codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
 if ($LASTEXITCODE -ne 0) { throw 'Encoding failed; discard output.' }
 cmd /c 'xz -6e < word-n5.spra > word-n5.spra.xz'
 if ($LASTEXITCODE -ne 0) { throw 'Compression failed; discard output.' }
 cmd /c 'xz -d < word-n5.spra.xz > unpacked.spra'
 if ($LASTEXITCODE -ne 0) { throw 'Decompression failed; discard output.' }
-cmd /c '.\build\reduced-codec.exe decode unpacked.spra > restored-n5.txt'
+cmd /c '.\build\reduced_codec.exe decode unpacked.spra > restored-n5.txt'
 if ($LASTEXITCODE -ne 0) { throw 'Decoding failed; discard output.' }
 ```
 
@@ -219,7 +219,7 @@ increase on some inputs because the byte patterns and xz parsing change.
 One word has many valid SPRA files: `02 20` and `02 10 10` are both four-bit
 bodies of `11111` at N=3, a copy may use an older occurrence of the same symbol,
 and a word that fits four-bit fields can also be written with six-bit fields.
-Exactly one file per word is canonical. It is the file `reduced-codec encode`
+Exactly one file per word is canonical. It is the file `reduced_codec encode`
 writes without `--bits`, and `decode --strict` accepts only that file. For a
 normalized word `w` of length L, with positions counted from 1:
 
@@ -392,7 +392,7 @@ bash tools/spra-xz.sh decode words/13/6747918058/superpermutation-13-6747918058.
 bash tools/benchmark_reduced_codec.sh --prefix-bytes 16777216 13 restored-n13.txt --xz-arg=-6e
 ```
 
-The script prefers `build/reduced-codec[.exe]`, falling back to the repository
+The script prefers `build/reduced_codec[.exe]`, falling back to the repository
 root. Use `--codec PATH` to choose another binary, `--bits 6` for one width,
 and repeated `--xz-arg=OPTION` arguments to configure compression. A rejected
 width is reported with its error. Input archives are decompressed and normalized
@@ -426,7 +426,7 @@ length. Values never wrap or truncate.
 Without `--bits`, encode checks every tuple against both widths in one pass. If
 all tuples fit four-bit fields it writes exactly the bytes of `--bits 4`;
 otherwise it writes exactly the bytes of `--bits 6` and prints one line on
-stderr, `reduced-codec: note: four-bit fields cannot encode this word (...)`,
+stderr, `reduced_codec: note: four-bit fields cannot encode this word (...)`,
 naming the first tuple out of the four-bit range. The exit status is still 0.
 If six bits do not fit either, encode fails with the six-bit error. With
 `--bits 4` or `--bits 6` there is no fallback: a tuple out of range is an error,
@@ -436,7 +436,7 @@ Header counts and word positions remain unsigned 64-bit. Although N=32 is a
 supported alphabet, complete N=21..32 superpermutations exceed the length field:
 even 21! is greater than `2^64-1`. This version does not widen those counters.
 
-The shell wrappers first run `reduced-codec measure`, which scans the word and
+The shell wrappers first run `reduced_codec measure`, which scans the word and
 prints its symbol length, logical tuple count and required field width without
 storing tuples. Whitespace is excluded from the length. They then pass
 `--length COUNT --tuples COUNT --bits 4|6` to encode. The encoder immediately
@@ -456,7 +456,7 @@ save a temporary raw input copy so it can be read twice. Supplying all three
 metadata options skips that pass and allows stdin to stream directly:
 
 ```sh
-build/reduced-codec measure 5 word.txt
+build/reduced_codec measure 5 word.txt
 bash tools/spra-xz.sh encode-raw --length LENGTH --tuples TUPLES --bits 4 5 word.txt > word.spra
 bash tools/spra-xz.sh encode --length LENGTH --tuples TUPLES --bits 4 5 - < word.txt > word.spra.xz
 ```

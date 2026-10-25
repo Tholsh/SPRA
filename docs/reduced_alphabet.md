@@ -1,6 +1,6 @@
 # Paint waste: build, run, and validate
 
-For binary compression and decompression, use the separate [SPRA 0.2 codec and xz wrapper](reduced_binary.md). The codec always run-length encodes logical tuples before packing. Select four- or six-bit tuple fields with `--bits 4|6`; the signed offsets are relative to N and differ from the historical diagnostic indices printed by this tool.
+For binary compression and decompression, use the separate [SPRA 0.2 codec and xz wrapper](spra.md). The codec always run-length encodes logical tuples before packing. Select four- or six-bit tuple fields with `--bits 4|6`; the signed offsets are relative to N and differ from the historical diagnostic indices printed by this tool.
 
 `tools/paint_waste.cpp` reads one word from stdin, with `1 <= N <= 13`, on a 64-bit platform. By default its alphabet is the first N characters of `123456789ABCD`. Use `-z` or `--zero-based` for the first N characters of `0123456789ABC`. Each character is one symbol; letters are uppercase. For example, zero-based N=11 uses `0123456789A`, not decimal numbers separated by spaces. Whitespace is ignored. Multiple lines are concatenated into a single word; a collection of separate words must be checked one word at a time. Four large N=6 collections use tar+xz; N>=9 uses one-based SPRA plus xz. The N=6 `1/` and `base/` examples remain uncompressed. See the [unpacking and streaming guide](corpus.md). See the [corpus layout](../README.md#corpus).
 
@@ -54,7 +54,7 @@ Statistics-only mode streams the word instead of retaining it. Exact coverage us
 # Same valid N=3 word relabeled from 123 to 012.
 '012010210' | ./build/paint-waste.exe -z -s 3
 # Validate the one-based N=11 stream; explicit -s avoids the confirmation prompt.
-cmd /c 'xz -dc words\11\43930624\superpermutation-11-43930624.spra.xz | .\build\reduced-codec.exe decode | .\build\paint-waste.exe -s 11'
+cmd /c 'xz -dc words\11\43930624\superpermutation-11-43930624.spra.xz | .\build\reduced_codec.exe decode | .\build\paint-waste.exe -s 11'
 ```
 
 Both pipelines decode directly from the compressed archive. In a POSIX shell:

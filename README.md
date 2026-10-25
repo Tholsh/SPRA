@@ -17,30 +17,30 @@ In a POSIX shell:
 Build code
 ```sh
 mkdir -p build
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 ```
 Run code
 ```sh
-./build/reduced-codec encode 5 words/5/153/153-recursive.txt > word-n5.spra
-./build/reduced-codec encode --bits 6 5 words/5/153/153-recursive.txt > word-n5-six.spra
-./build/reduced-codec decode word-n5.spra > restored-n5.txt
+./build/reduced_codec encode 5 words/5/153/153-recursive.txt > word-n5.spra
+./build/reduced_codec encode --bits 6 5 words/5/153/153-recursive.txt > word-n5-six.spra
+./build/reduced_codec decode word-n5.spra > restored-n5.txt
 
 # Codec plus xz; arguments after -- are passed to xz.
 bash tools/spra-xz.sh encode 5 words/5/153/153-recursive.txt -- -6e > word-n5.spra.xz
 bash tools/spra-xz.sh decode word-n5.spra.xz > restored-n5.txt
 ```
 
-In PowerShell, build with MinGW GCC (see docs/reduced_binary.md) and use `cmd /c` for binary-safe redirection:
+In PowerShell, build with MinGW GCC (see docs/spra.md) and use `cmd /c` for binary-safe redirection:
 
 ```powershell
 New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe
-cmd /c '.\build\reduced-codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
-cmd /c '.\build\reduced-codec.exe encode --bits 6 5 words\5\153\153-recursive.txt > word-n5-six.spra'
-cmd /c '.\build\reduced-codec.exe decode word-n5.spra > restored-n5.txt'
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
+cmd /c '.\build\reduced_codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
+cmd /c '.\build\reduced_codec.exe encode --bits 6 5 words\5\153\153-recursive.txt > word-n5-six.spra'
+cmd /c '.\build\reduced_codec.exe decode word-n5.spra > restored-n5.txt'
 ```
 
-Check the exit status before keeping output; errors go to stderr. See the [binary format and run guide](docs/reduced_binary.md) for stdin and xz pipelines, zero-based labels, the complete header and decoding rules, representability limits, and regression checks. The painted-word tool and its historical displayed indices remain separate.
+Check the exit status before keeping output; errors go to stderr. See the [binary format and run guide](docs/spra.md) for stdin and xz pipelines, zero-based labels, the complete header and decoding rules, representability limits, and regression checks. The painted-word tool and its historical displayed indices remain separate.
 
 The optional [byte-pair layer](docs/bpe_streaming.md), based on Halfar's PR #2,
 now streams by default using a bounded training prefix and fixed pair rules.
@@ -142,7 +142,7 @@ xz -dc words/11/43930624/superpermutation-11-43930624.txt.xz | ./paint-waste -z 
 ```
 # Improvement from V0.1
 
-On the complete 43,930,624-symbol N=11 example, four-bit SPRA 0.2 plus `xz -6e` takes **8,012 bytes**, versus 13,540 bytes for the old `V0.1` format with the same settings: **40.8% smaller**. Default-xz size falls from 45,752 to 19,916 bytes. Six-bit 0.2 plus `-6e` takes 12,560 bytes. Reproduce with `bash tools/benchmark_reduced_codec.sh 11 restored-n11.txt --xz-arg=-6e`; use `--baseline-codec PATH` for an old/new comparison. The C++ and shell regression checks are documented in [tools](docs/tools.md); all successful benchmark round trips matched SHA-256. The [guide](docs/reduced_binary.md#measurements-02-versus-the-old-format) and [JSON report](docs/reduced_xz_benchmarks.json) include both presets, both widths, and the N=13 prefix. Length counters remain unsigned 64-bit, so complete N=21..32 superpermutations exceed the format's length limit.
+On the complete 43,930,624-symbol N=11 example, four-bit SPRA 0.2 plus `xz -6e` takes **8,012 bytes**, versus 13,540 bytes for the old `V0.1` format with the same settings: **40.8% smaller**. Default-xz size falls from 45,752 to 19,916 bytes. Six-bit 0.2 plus `-6e` takes 12,560 bytes. Reproduce with `bash tools/benchmark_reduced_codec.sh 11 restored-n11.txt --xz-arg=-6e`; use `--baseline-codec PATH` for an old/new comparison. The C++ and shell regression checks are documented in [tools](docs/tools.md); all successful benchmark round trips matched SHA-256. The [guide](docs/spra.md#measurements-02-versus-the-old-format) and [JSON report](docs/reduced_xz_benchmarks.json) include both presets, both widths, and the N=13 prefix. Length counters remain unsigned 64-bit, so complete N=21..32 superpermutations exceed the format's length limit.
 
 ## License
 
