@@ -1,9 +1,11 @@
 # SPRA 0.2: tuple RLE and xz
 
 [`tools/reduced_codec.cpp`](../tools/reduced_codec.cpp) transforms normalized words
-into SPRA **0.2**, with mandatory run-length encoding of logical tuples. Choose
-`--bits 4` (default) or `--bits 6` for unsigned clean-run depth and signed copy
-offset. Physical tokens occupy 8 or 12 packed bits. RLE happens **before packing**,
+into SPRA **0.2**, with mandatory run-length encoding of logical tuples. Fields
+for unsigned clean-run depth and signed copy offset have 4 or 6 bits. Without
+`--bits`, encode writes four-bit fields and falls back to six-bit fields when
+four bits cannot hold the word; `--bits 4` or `--bits 6` forces one width.
+Physical tokens occupy 8 or 12 packed bits. RLE happens **before packing**,
 so six-bit tuples are compared as complete tuples, not as bytes.
 
 Encoding always writes header version byte `0x02`; there is no legacy-output or
@@ -34,12 +36,27 @@ The interface is unchanged:
 
 ```text
 reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]
-reduced-codec decode [INPUT|-]
+reduced-codec decode [--strict] [--max-symbols COUNT] [INPUT|-]
 ```
 
 Omitted `INPUT` or `-` reads stdin. `--bits=4` and `--bits=6` are accepted.
 Both commands write only their result to stdout. Errors go to stderr, returning
-status 1; success is quiet and returns 0. Decode writes no final newline.
+status 1; success returns 0 and is quiet, except for the one-line note of
+encode when it falls back to six-bit fields. Decode writes no final newline.
+
+Decode refuses a header length above N * N! before writing anything. N * N! is
+the length of all N! permutations written one after another, so no useful word
+is longer. `--max-symbols COUNT` (or `--max-symbols=COUNT`) replaces that limit
+in either direction: lower it for files from someone else, raise it for long
+test words. Without a limit, a 24-byte file with N=1 and length 2^64-1 makes
+the decoder write clean steps until the disk is full, and xz shrinks such a
+file to almost nothing. The default only catches impossible lengths: at N=13 it
+still allows 80,951,270,400 symbols, and from N=20 on N * N! exceeds the 64-bit
+length field, so only `--max-symbols` limits those files.
+
+`--strict` accepts only the canonical file of a word, the one encode writes
+without `--bits`, and refuses every other valid file with a message starting
+`strict:`. See [Canonical files](#canonical-files).
 
 Input labels are the first N characters of `123456789ABCDEFGHIJKLMNOPQRSTUVW`,
 or `0123456789ABCDEFGHIJKLMNOPQRSTUV` with `-z`, for N=1..32. Each uppercase
@@ -67,11 +84,15 @@ Its interface is:
 
 ```text
 spra-xz.sh encode [CODEC_OPTIONS] N [INPUT|-] [-- XZ_ARGS...]
-spra-xz.sh decode [INPUT|-] [-- XZ_ARGS...]
+spra-xz.sh decode [--strict] [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 ```
 
+Decode options before `--` go to `reduced-codec decode`.
+
 Arguments after `--` are passed separately and unchanged to xz; for example,
-`-- -6e --check=crc32`. Omit them to use xz defaults. Decode also accepts xz
+`-- -6e --check=crc32`. Without them, encode uses
+`-T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0` (see below); any arguments
+after `--` replace that default, so `-- -6` gives plain xz defaults. Decode also accepts xz
 options after `--`, such as `--memlimit-decompress=64MiB`. Named source files are
 preserved; the wrapper writes to stdout and does not open an output filename.
 It requires Bash and xz on PATH. `SPRA_CODEC=/path/to/reduced-codec` overrides
@@ -85,6 +106,33 @@ archive or the decoder may have written a prefix before the error was detected.
 Use different input and output paths; shell redirection truncates its target
 before the wrapper starts. Standard `XZ_DEFAULTS` and `XZ_OPT` settings apply to
 the wrapper; the benchmark clears those variables for reproducible comparisons.
+
+#### Default xz settings
+
+SPRA bytes are packed tokens, not text. With `lc=0,lp=0,pb=0` LZMA stops using
+the previous byte and the byte position as context, which only splits its
+statistics on these files, and a 256 MiB dictionary reaches repeats far back in
+the N=13 and N=14 files (`-9e` has 64 MiB, `-6e` 8 MiB). `-T1` keeps the whole
+file in one xz block, so matches can reach across all of it. Decompression
+needs about 257 MiB of memory instead of 9 MiB for `-6e`; compression takes
+about as long as `-9e` (26 s for an N=13 file, 5 minutes for N=14 on my
+machine).
+
+Every `.spra.xz` file of the corpus, decompressed and recompressed with xz
+5.8.2 (bytes summed per N; all round trips exact):
+
+| N | Files | Stored (`-6e`) | `-9e` | New default | New / stored |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 9 | 7 | 2,532 | 2,532 | 2,472 | 0.976 |
+| 10 | 6 | 12,644 | 12,644 | 12,312 | 0.974 |
+| 11 | 8 | 98,144 | 98,144 | 96,708 | 0.985 |
+| 12 | 9 | 885,716 | 774,204 | 771,344 | 0.871 |
+| 13 | 5 | 5,115,548 | 2,915,048 | 2,516,184 | 0.492 |
+| 14 | 1 | 9,679,980 | 7,830,260 | 6,143,360 | 0.635 |
+
+The public N=13 word 6,747,802,319 goes from 1,262,104 bytes (stored) and
+804,656 (`-9e`) to 750,056. The existing archives are unchanged; recompressing
+them is optional (`xz -dc OLD | xz -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0`).
 
 The equivalent explicit pipeline is:
 
@@ -125,7 +173,8 @@ offset: N - copy_distance, encoded as signed B-bit two's complement
 ```
 
 The encoder chooses the nearest earlier occurrence of the dirty symbol. The
-decoder permits any available backward reference that produces a dirty window.
+decoder permits any available backward reference that produces a dirty window
+(`--strict` accepts only the nearest one).
 Clean steps are unique: emit the symbol missing from the preceding N-1 symbols.
 Once a clean window is established, further clean steps copy at distance N.
 After the last logical tuple, decoded length determines the trailing clean run.
@@ -164,6 +213,44 @@ The comparison uses the full `(depth, offset)` tuple. RLE is always active and
 needs only the previous tuple and one bounded counter. It never increases the
 number of physical tokens relative to logical tuples. Final xz size can still
 increase on some inputs because the byte patterns and xz parsing change.
+
+## Canonical files
+
+One word has many valid SPRA files: `02 20` and `02 10 10` are both four-bit
+bodies of `11111` at N=3, a copy may use an older occurrence of the same symbol,
+and a word that fits four-bit fields can also be written with six-bit fields.
+Exactly one file per word is canonical. It is the file `reduced-codec encode`
+writes without `--bits`, and `decode --strict` accepts only that file. For a
+normalized word `w` of length L, with positions counted from 1:
+
+1. Header: version `0x02`; layout `0x44` when every logical tuple fits
+   four-bit fields (depth 0..15 and offset -8..+7), otherwise `0x66`; flags bit
+   0 set exactly when the word uses zero-based labels; N; L; and the number of
+   logical tuples (dirty windows).
+2. Seed: the IDs of the first `min(L, N-1)` symbols.
+3. Logical tuples: one for each dirty window, in order. For the window ending at
+   position `p`, depth is the number of clean windows since the previous dirty
+   window (or since the first window), and offset is `N - (p - q)`, where `q` is
+   the position of the **nearest** earlier occurrence of `w[p]`.
+4. Physical tokens: split the logical tuples into maximal runs of equal
+   `(depth, offset)`. A run of length r becomes one literal, then
+   `floor((r-1)/(M-1))` markers `(M-1, 0)`, then one marker
+   `((r-1) mod (M-1), 0)` if that count is not zero (`M = 2^B - 1`).
+5. Packing as in [Wire format](#wire-format): MSB first, zero padding, nothing
+   after the last token.
+
+The letters, N and the label set fix the canonical file. For a
+superpermutation, N is its number of distinct symbols and the letters show the
+label set (`0` occurs only in zero-based words), so each superpermutation has
+exactly one canonical file. Other strings can also be written with a larger N.
+
+Among the files the decoder accepts, `--strict` refuses: version `0x01`; a copy
+that does not use the nearest occurrence; a literal equal to the previous
+logical tuple; a marker that follows a marker with a count below `M-1`; and
+six-bit fields when every tuple fits four bits. The last check needs all
+tuples, so it fails after the output up to the trailing clean run has been
+written; as with any error, discard the output. `encode --bits 6` on a word
+that fits four bits writes a valid file that is not canonical.
 
 ## Wire format
 
@@ -334,8 +421,16 @@ Every dirty symbol must already have appeared, and its nearest-reference offset
 must fit. A first appearance inside a dirty window is rejected. There are no
 literal-symbol or extended-depth escapes. A clean run before a dirty symbol must
 fit the chosen field; an arbitrary trailing clean run is represented by decoded
-length. Values never wrap or truncate, and four-bit rejection does not trigger
-an automatic retry with six-bit fields.
+length. Values never wrap or truncate.
+
+Without `--bits`, encode checks every tuple against both widths in one pass. If
+all tuples fit four-bit fields it writes exactly the bytes of `--bits 4`;
+otherwise it writes exactly the bytes of `--bits 6` and prints one line on
+stderr, `reduced-codec: note: four-bit fields cannot encode this word (...)`,
+naming the first tuple out of the four-bit range. The exit status is still 0.
+If six bits do not fit either, encode fails with the six-bit error. With
+`--bits 4` or `--bits 6` there is no fallback: a tuple out of range is an error,
+as before.
 
 Header counts and word positions remain unsigned 64-bit. Although N=32 is a
 supported alphabet, complete N=21..32 superpermutations exceed the length field:
@@ -343,10 +438,29 @@ even 21! is greater than `2^64-1`. This version does not widen those counters.
 
 The encoder checks all input before publishing bytes, spooling the RLE body to a
 temporary file to determine header counts. Memory is fixed buffers plus O(N)
-state. Temporary disk use is the packed **physical** body. Decode streams without
+state. Temporary disk use is the packed **physical** body; without `--bits` the
+spool uses six-bit fields and is re-packed when four bits fit, so it can be
+up to 1.5 times the final body. Decode streams without
 spooling the word. SPRA itself has no checksum; xz supplies its outer integrity
 check. Structural validity and archive integrity do not establish permutation
 coverage.
+
+### Integrity and word identity
+
+A changed body byte can decode to a different word with exit status 0. Of the
+184 single-bit flips in the body of the 153-symbol N=5 word, 29 decode to
+another 153-symbol word, and 28 of those also pass `--strict`. xz checks its
+archives (CRC64 by default), so this matters for raw `.spra` files and for
+anything that strips the xz container. To trust a word, check the word: its
+coverage, or a known SHA-256 of its letters.
+
+One word also has many valid files (see [Canonical files](#canonical-files)),
+and xz settings change the archive bytes, so the SHA-256 of a `.spra` or
+`.spra.xz` file does not identify a word. Identify words by the SHA-256 of the
+decoded letters, for example `bash tools/spra-xz.sh decode FILE | sha256sum`.
+When one file per word is needed, for instance to key files by hash, accept
+only files that pass `decode --strict`; their SPRA bytes then follow from the
+letters alone. The format itself is unchanged.
 
 ## Regression checks
 

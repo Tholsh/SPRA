@@ -27,10 +27,73 @@ printf bad > "$work/bad"
 if bash "$wrapper" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 if "$SPRA_CODEC" encode 3 "$work/bad" > "$work/out" 2>/dev/null; then exit 1; fi
 [[ ! -s $work/out ]]
-for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown'; do
+# Without xz arguments, encode uses -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0.
+bash "$wrapper" encode 3 "$work/input word.txt" > "$work/default.xz"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" | xz -c -T1 --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0 | cmp - "$work/default.xz"
+xz --robot --list -vv "$work/default.xz" | grep -q 'dict=256MiB'
+bash "$wrapper" encode 3 "$work/input word.txt" -- -6e > "$work/explicit.xz"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" | xz -c -6e | cmp - "$work/explicit.xz"
+# Without --bits, a word that four-bit fields cannot hold gets six-bit fields and a note.
+printf '12111111111112' > "$work/six.txt"
+"$SPRA_CODEC" encode 3 "$work/six.txt" > "$work/auto.spra" 2> "$work/error"
+"$SPRA_CODEC" encode --bits 6 3 "$work/six.txt" > "$work/six.spra"
+cmp "$work/auto.spra" "$work/six.spra"
+grep -q 'note: four-bit fields cannot encode this word (copy distance 12' "$work/error"
+if "$SPRA_CODEC" encode --bits 4 3 "$work/six.txt" > "$work/out" 2> "$work/error"; then echo 'four-bit encode accepted distance 12' >&2; exit 1; fi
+[[ ! -s $work/out ]]
+grep -q 'copy distance 12 is outside 4-bit range' "$work/error"
+bash "$wrapper" encode 3 - < "$work/six.txt" 2> /dev/null > "$work/six.xz"
+bash "$wrapper" decode "$work/six.xz" > "$work/restored"
+cmp "$work/six.txt" "$work/restored"
+for args in '' 'unknown' 'encode' 'encode 0' 'encode 33' 'encode 3foo' 'encode --bits 5 3' 'encode --bits=6foo 3' 'encode --bits 4 --bits=6 3' 'decode --bits 6' 'encode -z --zero-based 3' 'decode -z' 'decode a b' 'encode 3 --unknown' 'decode --max-symbols' 'decode --max-symbols x' 'decode --max-symbols=5x' 'decode --max-symbols 5 --max-symbols=6' 'encode --max-symbols 5 3' 'encode --strict 3' 'decode --strict --strict'; do
     if "$SPRA_CODEC" $args < /dev/null > "$work/out" 2> "$work/error"; then echo "invalid codec arguments accepted: $args" >&2; exit 1; fi
     [[ ! -s $work/out && -s $work/error ]]
 done
+# Header length above N * N! (here 2^64-1 at N=1, a 24-byte file) needs --max-symbols.
+printf 'SPRA\002\104\000\001\377\377\377\377\377\377\377\377\000\000\000\000\000\000\000\000' > "$work/long.spra"
+if "$SPRA_CODEC" decode "$work/long.spra" > "$work/out" 2> "$work/error"; then echo 'length above N * N! accepted' >&2; exit 1; fi
+[[ ! -s $work/out ]]
+grep -q 'N \* N!' "$work/error"
+if "$SPRA_CODEC" decode --max-symbols 1000 "$work/long.spra" > "$work/out" 2> "$work/error"; then exit 1; fi
+grep -q 'exceeds --max-symbols 1000' "$work/error"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" > "$work/word.spra"
+for limit in '--max-symbols 5' '--max-symbols=5' '--max-symbols 18446744073709551615'; do
+    "$SPRA_CODEC" decode $limit "$work/word.spra" > "$work/restored"
+    cmp "$work/expected" "$work/restored"
+done
+if "$SPRA_CODEC" decode --max-symbols 4 "$work/word.spra" > "$work/out" 2>/dev/null; then echo 'length above --max-symbols accepted' >&2; exit 1; fi
+[[ ! -s $work/out ]]
+bash "$wrapper" encode 3 "$work/input word.txt" > "$work/word.xz"
+bash "$wrapper" decode --max-symbols 5 "$work/word.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+bash "$wrapper" decode --max-symbols=5 - < "$work/word.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+for args in 'decode --max-symbols 4' 'decode --max-symbols' 'decode --max-symbols 5 one two'; do
+    if bash "$wrapper" $args "$work/word.xz" < /dev/null > /dev/null 2>&1; then echo "bad wrapper decode accepted: $args" >&2; exit 1; fi
+done
+# --strict: 02 20 is the canonical body of 11111 at N=3; 02 10 10 and a non-nearest copy are not.
+printf 'SPRA\002\104\000\003\005\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\000\000\002\040' > "$work/canonical.spra"
+printf 'SPRA\002\104\000\003\005\000\000\000\000\000\000\000\003\000\000\000\000\000\000\000\000\000\002\020\020' > "$work/split.spra"
+printf 'SPRA\002\104\000\003\003\000\000\000\000\000\000\000\001\000\000\000\000\000\000\000\000\000\001' > "$work/far.spra"
+"$SPRA_CODEC" encode 3 "$work/input word.txt" | cmp - "$work/canonical.spra"
+"$SPRA_CODEC" decode --strict "$work/canonical.spra" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+"$SPRA_CODEC" decode "$work/split.spra" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+[[ $("$SPRA_CODEC" decode "$work/far.spra") == 111 ]]
+for file in split far; do
+    if "$SPRA_CODEC" decode --strict "$work/$file.spra" > /dev/null 2> "$work/error"; then echo "--strict accepted $file.spra" >&2; exit 1; fi
+    grep -q 'strict: ' "$work/error"
+done
+xz -c "$work/split.spra" > "$work/split.xz"
+bash "$wrapper" decode "$work/split.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+if bash "$wrapper" decode --strict "$work/split.xz" > /dev/null 2>&1; then echo 'wrapper --strict accepted split.spra' >&2; exit 1; fi
+bash "$wrapper" decode --strict --max-symbols 5 "$work/word.xz" > "$work/restored"
+cmp "$work/expected" "$work/restored"
+xz -c "$work/long.spra" > "$work/long.xz"
+if bash "$wrapper" decode "$work/long.xz" > "$work/out" 2>/dev/null; then echo 'wrapper decoded a length above N * N!' >&2; exit 1; fi
+[[ ! -s $work/out ]]
 for n in 5 6 7 8 9; do
     case $n in
         5) cp "$root/words/5/153/153-recursive.txt" "$work/source";;
@@ -40,6 +103,12 @@ for n in 5 6 7 8 9; do
         9) bash "$wrapper" decode "$root/words/9/408731/superperm9_408731_19_canonical.spra.xz" > "$work/source";;
     esac
     tr -d ' \t\r\n\v\f' < "$work/source" > "$work/expected"
+    "$SPRA_CODEC" encode "$n" "$work/source" > "$work/auto.spra" 2> "$work/error"
+    "$SPRA_CODEC" encode --bits 4 "$n" "$work/source" > "$work/four.spra"
+    cmp "$work/auto.spra" "$work/four.spra"
+    [[ ! -s $work/error ]]
+    "$SPRA_CODEC" decode --strict "$work/auto.spra" > "$work/restored"
+    cmp "$work/expected" "$work/restored"
     for bits in 4 6; do
         bash "$wrapper" encode --bits "$bits" "$n" "$work/source" > "$work/packed.xz"
         bash "$wrapper" decode "$work/packed.xz" > "$work/restored"
@@ -48,9 +117,9 @@ for n in 5 6 7 8 9; do
 done
 bash "$root/tools/benchmark_reduced_codec.sh" 3 "$work/input word.txt" --codec "$SPRA_CODEC" --baseline-codec "$SPRA_CODEC" --xz-arg=-6e > "$work/report.json"
 # PowerShell's JSON parser checks the actual report on Windows; jq elsewhere.
-if command -v powershell.exe >/dev/null 2>&1; then
+if command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
     export SPRA_TEST_REPORT=$(cygpath -w "$work/report.json")
-    powershell.exe -NoProfile -Command '$r=Get-Content -Raw $env:SPRA_TEST_REPORT|ConvertFrom-Json; if (($r.layouts|ConvertTo-Json -Compress) -ne ($r.baseline_layouts|ConvertTo-Json -Compress)) {exit 1}; foreach($l in $r.layouts){if($l.logical_tuples -ne 3 -or $l.stored_tokens -ne 2 -or !$l.round_trip_sha256_matches){exit 1}}'
+    powershell.exe -NoProfile -Command '$ErrorActionPreference="Stop"; $r=Get-Content -Raw $env:SPRA_TEST_REPORT|ConvertFrom-Json; if (($r.layouts|ConvertTo-Json -Compress) -ne ($r.baseline_layouts|ConvertTo-Json -Compress)) {exit 1}; foreach($l in $r.layouts){if($l.logical_tuples -ne 3 -or $l.stored_tokens -ne 2 -or !$l.round_trip_sha256_matches){exit 1}}'
 elif command -v jq >/dev/null 2>&1; then
     jq -e '.layouts == .baseline_layouts and (.layouts | all(.logical_tuples == 3 and .stored_tokens == 2 and .round_trip_sha256_matches))' "$work/report.json" > /dev/null
 else echo 'Install jq to validate benchmark JSON' >&2; exit 1; fi
