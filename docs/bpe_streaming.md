@@ -8,7 +8,7 @@ This retains the important transformation: tuple runs become stable byte symbols
 
 ```sh
 mkdir -p build
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 g++ -std=c++20 -O2 tools/bpe_layer.cpp -o build/spra-bpe
 
 # Existing corpus archive: streaming SPRA -> BPE -> one continuous xz stream.
@@ -83,7 +83,7 @@ This removes the compressed-body spool, but still requires an initial input
 scan. Stdin is copied temporarily unless `--length`, `--tuples` and `--bits`
 are supplied; those options skip measurement and enable a single pass.
 Mismatches warn on stderr at EOF without changing the supplied header or exit
-status. See [encoding details](reduced_binary.md). `pack` and raw-word decoding
+status. See [encoding details](spra.md). `pack` and raw-word decoding
 continue to stream. SPRA's tail reconstruction, strict mode and Halfar's
 decode limits are preserved.
 

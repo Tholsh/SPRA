@@ -4,9 +4,11 @@
 set -euo pipefail
 unset XZ_OPT XZ_DEFAULTS
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-codec=$root/build/reduced-codec
-[[ -f $codec.exe ]] && codec+=.exe
-if [[ ! -f $codec ]]; then codec=$root/reduced-codec; [[ ! -f $codec.exe ]] || codec+=.exe; fi
+codec=$root/build/reduced_codec
+for candidate in "$root/build/reduced_codec"{,.exe} "$root/reduced_codec"{,.exe} \
+                 "$root/build/reduced-codec"{,.exe} "$root/reduced-codec"{,.exe}; do
+    if [[ -f $candidate ]]; then codec=$candidate; break; fi
+done
 baseline= prefix= zero=false
 bits=(4 6); xargs=(); positional=()
 fail() { printf 'benchmark-reduced-codec: %s\n' "$*" >&2; exit 1; }

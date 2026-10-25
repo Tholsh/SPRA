@@ -1,4 +1,10 @@
-# Tools 
+# Tools
+
+To decompress a folder recursively into `.txt` files, run
+`bash tools/decompress-folder.sh SOURCE_DIRECTORY`.
+Text files appear beside their archives; existing text files are skipped.
+Optionally supply a new output directory to preserve subfolders elsewhere.
+See the [corpus guide](corpus.md) for supported archives and examples.
 
 The tools require a C++20 compiler and Bash 4 or newer. The benchmark and archive wrappers
 also require xz and standard shell utilities (`sha256sum`, `cmp`, `od`, `head`,
@@ -10,7 +16,7 @@ Build from the repository root:
 ```sh
 mkdir -p build
 g++ -std=c++20 -O2 -Wall -Wextra tools/relabel_words.cpp -o build/relabel-words
-g++ -std=c++20 -O2 -Wall -Wextra tools/reduced_codec.cpp -o build/reduced-codec
+g++ -std=c++20 -O2 -Wall -Wextra tools/reduced_codec.cpp -o build/reduced_codec
 g++ -std=c++20 -O2 -Wall -Wextra tools/paint_waste.cpp -o build/paint-waste
 g++ -std=c++20 -O2 -Wall -Wextra tools/bpe_layer.cpp -o build/spra-bpe
 ```
@@ -45,7 +51,7 @@ folder conversion retains files already completed. Bash's folder launcher uses
 ```sh
 bash tools/benchmark_reduced_codec.sh 5 words/5/153/153-recursive.txt --xz-arg=-6e
 bash tools/benchmark_reduced_codec.sh 5 words/5/153/153-recursive.txt \
-  --codec build/reduced-codec --baseline-codec /path/to/old-codec \
+  --codec build/reduced_codec --baseline-codec /path/to/old-codec \
   --bits 4 6 --xz-arg=-6e --prefix-bytes 1000000
 ```
 

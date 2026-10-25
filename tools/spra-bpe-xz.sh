@@ -68,7 +68,8 @@ find_tool() {
     done
     return 0
 }
-codec=${SPRA_CODEC:-$(find_tool reduced-codec)}
+codec=${SPRA_CODEC:-$(find_tool reduced_codec)}
+if [[ -z $codec ]]; then codec=$(find_tool reduced-codec); fi
 bpe=${SPRA_BPE:-$(find_tool spra-bpe)}
 if [[ -z $bpe || ( -z $codec && ( $operation == encode || $operation == decode ) ) ]]; then
     printf '%s\n' 'spra-bpe-xz: tools not found; build tools/reduced_codec.cpp and tools/bpe_layer.cpp (docs/bpe_layer.md), or set SPRA_CODEC and SPRA_BPE.' >&2

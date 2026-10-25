@@ -1,5 +1,21 @@
 # Corpus archives: unpack or stream
 
+To decompress any folder recursively into text files, preserving its subfolders:
+
+```sh
+# Write .txt files beside the archives throughout words/9.
+bash tools/decompress-folder.sh words/9
+
+# Optional: write to a separate new directory instead.
+bash tools/decompress-folder.sh words/9 build/decoded-n9
+```
+
+With no output argument, existing text files are skipped and archives stay in
+place. A separate output directory must be new and outside the source folder. The script
+decodes SPRA and BPE files, decompresses `.txt.xz` and collection `.tar.xz`
+archives, and copies existing `.txt` files. Sources are preserved. Completed
+files remain if a later archive fails; incomplete decoded files are removed.
+
 Halfar's N=14 construction is stored at
 `words/14/93904804425/superpermutation-14-93904804425-halfar.spra.xz`.
 Its 93,904,804,425 symbols occupy **9,679,980 bytes** with six-bit SPRA and
@@ -57,14 +73,14 @@ From the repository root:
 
 ```sh
 mkdir -p build
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 ```
 
 With MinGW GCC in PowerShell:
 
 ```powershell
 New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe
+g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
 ```
 
 MSYS2 or Git Bash supplies the shell tools on Windows. Set `SPRA_CODEC` to use
@@ -142,8 +158,8 @@ binary pipeline through `cmd /c`:
 
 ```powershell
 bash -c 'bash tools/spra-xz.sh decode words/9/408731/superpermutation-9-408731.spra.xz > build/raw-n9.txt'
-cmd /c 'xz -dc words\9\408731\superpermutation-9-408731.spra.xz | .\build\reduced-codec.exe decode > build\raw-n9.txt'
+cmd /c 'xz -dc words\9\408731\superpermutation-9-408731.spra.xz | .\build\reduced_codec.exe decode > build\raw-n9.txt'
 ```
 
 Check the pipeline's exit status before using redirected output. See the
-[codec guide](reduced_binary.md) for encoding options and format limits.
+[codec guide](spra.md) for encoding options and format limits.

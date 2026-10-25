@@ -3,7 +3,7 @@
 // Distributed without warranty; see the repository LICENSE for full terms.
 
 // A strict, configurable-width tuple preconditioner for xz. See
-// docs/reduced_binary.md for the wire format and its representability limits.
+// docs/spra.md for the wire format and its representability limits.
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -424,7 +424,7 @@ Count default_max_symbols(unsigned n) {
 }
 
 // --strict accepts only the canonical file of the word, the bytes encode writes
-// without --bits (docs/reduced_binary.md, "Canonical files"): version 0x02,
+// without --bits (docs/spra.md, "Canonical files"): version 0x02,
 // nearest references, literals only where a run of equal tuples starts, full
 // markers except the last of a run, and six-bit fields only when needed.
 void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt, bool strict = false) {
