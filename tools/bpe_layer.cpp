@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Jakub Halfar
+// Copyright (C) 2026 Theo H.
 // Distributed without warranty; see the repository LICENSE for full terms.
 
-// An optional layer between SPRA 0.2 and xz (a proposal, not part of SPRA).
+// Halfar's optional layer between SPRA 0.2 and xz, integrated from PR #2.
+// SPBE 2 uses bounded-prefix learning and
+// incremental fixed-rule substitution. See docs/bpe_streaming.md.
 // Each run of equal logical tuples becomes one byte, and byte-pair encoding
 // (Re-Pair stopped early, at most 255 pair rules) folds the commonest
 // neighbours into new bytes before xz. See docs/bpe_layer.md for the format.
 #include <algorithm>
+#include <bit>
+#include <functional>
 #include <array>
 #include <charconv>
 #include <cstdint>
 #include <cstdio>
+#include <cerrno>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -24,6 +30,8 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#else
+#include <unistd.h>
 #endif
 
 namespace {
@@ -32,16 +40,16 @@ using Count = std::uint64_t;
 constexpr std::size_t BUFFER_SIZE = 65536;
 constexpr unsigned MAX_N = 32;
 constexpr unsigned SYMBOLS = 256;
-constexpr Count DEFAULT_MIN_COUNT = 1024;
 constexpr std::array<Byte, 4> MAGIC{'S', 'P', 'B', 'E'};
 constexpr std::array<Byte, 4> SPRA_MAGIC{'S', 'P', 'R', 'A'};
-constexpr Byte VERSION = 1;
 constexpr Byte SPRA_VERSION = 2;
 constexpr const char* USAGE =
-    "usage: spra-bpe encode [--min-count COUNT] [INPUT|-]\n"
+    "usage: spra-bpe encode [--min-count COUNT] [--train-runs COUNT | --whole-file] [INPUT|-]\n"
     "       spra-bpe decode [--max-symbols COUNT] [INPUT|-]\n"
     "  encode reads SPRA 0.2 and writes SPBE; decode reads SPBE and writes SPRA 0.2.\n"
-    "  --min-count: stop adding pair rules below COUNT occurrences (default 1024).\n"
+    "  Default: streaming SPBE 2, train on up to 65536 runs, min-count 16.\n"
+    "  --train-runs: training prefix limit, 1..1048576; one fixed dictionary per file.\n"
+    "  --whole-file: buffer all runs and write SPBE 1 (default min-count 1024).\n"
     "  --max-symbols: refuse a header length above COUNT (default N * N!).\n"
     "  Omitted INPUT or '-' reads stdin; output goes to stdout. Compress with xz.\n";
 
@@ -70,10 +78,20 @@ public:
     explicit Reader(std::FILE* file) : file_(file) {}
     int get() {
         if (position_ == size_) {
-            size_ = std::fread(buffer_.data(), 1, buffer_.size(), file_);
+            // One OS read returns available pipe bytes instead of waiting to
+            // fill an entire stdio buffer while the producer is still live.
+            int received;
+            do {
+#ifdef _WIN32
+                received = _read(_fileno(file_), buffer_.data(), static_cast<unsigned>(buffer_.size()));
+#else
+                received = static_cast<int>(::read(fileno(file_), buffer_.data(), buffer_.size()));
+#endif
+            } while (received < 0 && errno == EINTR);
+            if (received < 0) fail("input read failed");
+            size_ = static_cast<std::size_t>(received);
             position_ = 0;
             if (size_ == 0) {
-                if (std::ferror(file_)) fail("input read failed");
                 return EOF;
             }
         }
@@ -210,36 +228,19 @@ void replace_pair(std::vector<Byte>& body, std::pair<Byte, Byte> pair, Byte symb
     body.resize(write);
 }
 
-void encode(std::FILE* source, Count min_count) {
-    Reader input(source);
-    const Header header = read_spra_header(input);
-    // Logical tuples as maximal runs; run ids in order of first occurrence.
-    std::unordered_map<Run, std::uint32_t, RunHash> ids;
-    std::vector<Run> runs;
-    std::vector<Count> counts;
-    std::vector<Byte> body;
+// Parsing is one pass. Only the current maximal run is retained here.
+// Streaming mode splits exceptional long runs, bounding the learning delay;
+// the decoder coalesces the pieces back to the original canonical SPRA bytes.
+template<class Emit>
+void read_runs(Reader& input, const Header& header, Emit emit, Count split_at = 0) {
     Run current{};
-    const auto close_run = [&] {
-        if (!current.count) return;
-        const auto [it, added] = ids.try_emplace(current, static_cast<std::uint32_t>(runs.size()));
-        if (added) {
-            if (runs.size() == SYMBOLS)
-                fail("more than 256 distinct runs of equal tuples; keep this word as SPRA plus xz");
-            runs.push_back(current);
-            counts.push_back(0);
-        }
-        ++counts[it->second];
-        body.push_back(static_cast<Byte>(it->second));
-    };
+    const auto close_run = [&] { if (current.count) emit(current); };
     const unsigned width = 2 * header.bits, mask = header.mask();
     unsigned pending = 0, have = 0;
     Tuple previous{};
     bool has_previous = false;
     for (Count expanded = 0; expanded < header.tuple_count;) {
-        while (have < width) {
-            pending = (pending << 8) | input.required("tuple body");
-            have += 8;
-        }
+        while (have < width) { pending = (pending << 8) | input.required("tuple body"); have += 8; }
         have -= width;
         const unsigned token = pending >> have;
         pending &= (1u << have) - 1;
@@ -251,22 +252,26 @@ void encode(std::FILE* source, Count min_count) {
             if (!has_previous) fail("repeat marker has no preceding tuple");
             if (tuple.depth > header.tuple_count - expanded) fail("repeat marker exceeds logical tuple count");
             repeat = tuple.depth;
-        } else {
-            previous = tuple;
-            has_previous = true;
-        }
+        } else { previous = tuple; has_previous = true; }
         if (current.count && current.tuple == previous) current.count += repeat;
-        else {
-            close_run();
-            current = {previous, repeat};
+        else { close_run(); current = {previous, repeat}; }
+        if (split_at && current.count >= split_at) {
+            const auto remaining = current.count - split_at;
+            current.count = split_at; close_run(); current = {previous, remaining};
         }
         expanded += repeat;
     }
     close_run();
     if (pending) fail("nonzero padding bits after final tuple");
     if (input.get() != EOF) fail("extra bytes after tuple body");
+}
 
-    // Number the runs by decreasing count, ties by first occurrence.
+// Halfar's frequency ordering and early-stopped Re-Pair, unchanged, applied
+// to the training prefix or whole file. Input is one byte per run.
+void write_frame(Writer& output, const std::vector<Run>& runs,
+                 const std::vector<Count>& counts, std::vector<Byte>& body, Count min_count,
+                 std::array<Byte, SYMBOLS>* learned_rank = nullptr,
+                 std::vector<std::pair<Byte, Byte>>* learned_rules = nullptr) {
     std::vector<std::uint32_t> order(runs.size());
     std::iota(order.begin(), order.end(), 0u);
     std::stable_sort(order.begin(), order.end(), [&](auto a, auto b) { return counts[a] > counts[b]; });
@@ -280,11 +285,6 @@ void encode(std::FILE* source, Count min_count) {
         replace_pair(body, *pair, static_cast<Byte>(runs.size() + rules.size()));
         rules.push_back(*pair);
     }
-
-    Writer output(stdout);
-    output.bytes(MAGIC.data(), MAGIC.size());
-    output.put(VERSION);
-    output.bytes(header.bytes.data(), header.bytes.size());
     output.varint(runs.size());
     for (auto r : order) {
         output.put(static_cast<Byte>(runs[r].tuple.depth));
@@ -292,15 +292,115 @@ void encode(std::FILE* source, Count min_count) {
         output.varint(runs[r].count);
     }
     output.put(static_cast<Byte>(rules.size()));
-    for (auto [left, right] : rules) {
-        output.put(left);
-        output.put(right);
-    }
+    for (auto [left, right] : rules) { output.put(left); output.put(right); }
     output.varint(body.size());
     output.bytes(body.data(), body.size());
-    output.finish();
+    if (learned_rank) *learned_rank = rank;
+    if (learned_rules) *learned_rules = rules;
 }
 
+constexpr Count DEFAULT_TRAIN_RUNS = 65536;
+constexpr Count MAX_TRAIN_RUNS = 1048576;
+
+// A cascade of Halfar's fixed pair substitutions. Each stage retains at most
+// its left byte; a bitmap skips rules which cannot act on the current byte.
+class PairStream {
+    const std::vector<std::pair<Byte, Byte>>& rules_;
+    unsigned base_;
+    std::array<std::array<std::uint64_t, 4>, SYMBOLS> left_{};
+    std::array<std::uint64_t, 4> pending_{};
+    std::function<void(Byte)> emit_;
+public:
+    PairStream(const std::vector<std::pair<Byte, Byte>>& rules, unsigned base, std::function<void(Byte)> emit)
+        : rules_(rules), base_(base), emit_(std::move(emit)) {
+        for (unsigned i = 0; i < rules.size(); ++i) left_[rules[i].first][i / 64] |= std::uint64_t(1) << (i % 64);
+    }
+    void put(Byte symbol, unsigned start = 0) {
+        for (;;) {
+            unsigned stage = static_cast<unsigned>(rules_.size());
+            for (unsigned word = start / 64; word < 4; ++word) {
+                auto candidates = left_[symbol][word] | pending_[word];
+                if (word == start / 64) candidates &= ~std::uint64_t(0) << (start % 64);
+                if (candidates) { stage = word * 64 + std::countr_zero(candidates); break; }
+            }
+            if (stage >= rules_.size()) { emit_(symbol); return; }
+            auto& pending = pending_[stage / 64]; const auto bit = std::uint64_t(1) << (stage % 64);
+            if (!(pending & bit)) { pending |= bit; return; }
+            pending &= ~bit;
+            if (symbol == rules_[stage].second) { symbol = static_cast<Byte>(base_ + stage); start = stage + 1; }
+            else {
+                put(rules_[stage].first, stage + 1);
+                if (symbol == rules_[stage].first) { pending |= bit; return; }
+                start = stage + 1;
+            }
+        }
+    }
+    void finish() {
+        for (unsigned stage = 0; stage < rules_.size(); ++stage) {
+            const auto bit = std::uint64_t(1) << (stage % 64);
+            if (pending_[stage / 64] & bit) { pending_[stage / 64] &= ~bit; put(rules_[stage].first, stage + 1); }
+        }
+    }
+};
+
+void encode(std::FILE* source, Count min_count, Count train_runs = DEFAULT_TRAIN_RUNS, bool whole_file = false) {
+    Reader input(source); const Header header = read_spra_header(input);
+    std::unordered_map<Run, std::uint32_t, RunHash> ids;
+    std::vector<Run> runs; std::vector<Count> counts; std::vector<Byte> body;
+    if (!whole_file) body.reserve(static_cast<std::size_t>(train_runs));
+    Writer output(stdout); bool trained = false; unsigned next_symbol = 0;
+    std::vector<std::pair<Byte, Byte>> rules;
+    std::unique_ptr<PairStream> stream;
+    std::vector<Byte> data; data.reserve(4096);
+    const auto flush_data = [&] {
+        if (data.empty()) return;
+        output.put(1); output.varint(data.size()); output.bytes(data.data(), data.size());
+        output.finish(); data.clear();
+    };
+    const auto preamble = [&] {
+        output.bytes(MAGIC.data(), MAGIC.size()); output.put(whole_file ? 1 : 2);
+        output.bytes(header.bytes.data(), header.bytes.size());
+    };
+    if (!whole_file) { preamble(); output.finish(); }
+    const auto train = [&] {
+        std::array<Byte, SYMBOLS> rank{};
+        write_frame(output, runs, counts, body, min_count, &rank, &rules);
+        for (auto& [run, id] : ids) id = rank[id];
+        next_symbol = static_cast<unsigned>(runs.size() + rules.size());
+        stream = std::make_unique<PairStream>(rules, static_cast<unsigned>(runs.size()), [&](Byte symbol) {
+            data.push_back(symbol); if (data.size() == 4096) flush_data();
+        });
+        body.clear(); body.shrink_to_fit(); counts.clear(); runs.clear();
+        trained = true; output.finish();
+    };
+    Count bootstrap_tuples = 0;
+    read_runs(input, header, [&](const Run& run) {
+        auto found = ids.find(run);
+        if (!whole_file && !trained && (body.size() == train_runs || bootstrap_tuples >= train_runs * 16
+                || (found == ids.end() && runs.size() == SYMBOLS))) train();
+        found = ids.find(run);
+        if (trained) {
+            if (found == ids.end()) {
+                stream->finish(); flush_data();
+                output.put(next_symbol < SYMBOLS ? 2 : 3);
+                output.put(static_cast<Byte>(run.tuple.depth)); output.put(static_cast<Byte>(run.tuple.offset)); output.varint(run.count);
+                if (next_symbol < SYMBOLS) { found = ids.emplace(run, next_symbol++).first; }
+                else { output.finish(); return; }
+            }
+            stream->put(static_cast<Byte>(found->second));
+            if (run.count >= 65536) { stream->finish(); flush_data(); }
+        } else {
+            if (found == ids.end()) {
+                if (runs.size() == SYMBOLS) fail("more than 256 distinct runs; use streaming mode or SPRA plus xz");
+                const auto id = static_cast<std::uint32_t>(runs.size()); ids.emplace(run,id); runs.push_back(run); counts.push_back(1); body.push_back(static_cast<Byte>(id));
+            } else { ++counts[found->second]; body.push_back(static_cast<Byte>(found->second)); }
+            bootstrap_tuples += run.count;
+        }
+    }, whole_file ? 0 : 65536);
+    if (whole_file) { preamble(); write_frame(output, runs, counts, body, min_count); }
+    else { if (!trained) train(); stream->finish(); flush_data(); output.put(0); }
+    output.finish();
+}
 // Canonical SPRA 0.2 body: a literal per run of equal tuples, then markers of
 // M-1 repeats, then the remainder (what reduced-codec encode writes).
 class SpraBodyWriter {
@@ -356,69 +456,72 @@ Count default_max_symbols(unsigned n) {
 
 void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) {
     Reader input(source);
-    for (Byte expected : MAGIC)
-        if (input.required("header") != expected) fail("not an SPBE file");
-    if (input.required("header") != VERSION) fail("unsupported SPBE version");
+    for (Byte expected : MAGIC) if (input.required("header") != expected) fail("not an SPBE file");
+    const unsigned version = input.required("header");
+    if (version != 1 && version != 2) fail("unsupported SPBE version");
     const Header header = read_spra_header(input);
     const Count limit = max_symbols ? *max_symbols : default_max_symbols(header.n);
-    if (header.length > limit)
-        fail("header length " + std::to_string(header.length) + " exceeds " +
-             (max_symbols ? "--max-symbols " : "N * N! = ") + std::to_string(limit));
+    if (header.length > limit) fail("header length " + std::to_string(header.length) + " exceeds " + (max_symbols ? "--max-symbols " : "N * N! = ") + std::to_string(limit));
+    const unsigned mask = header.mask();
+    const auto read_run = [&] {
+        Run run; run.tuple.depth = input.required("run table");
+        run.tuple.offset = static_cast<std::int8_t>(input.required("run table")); run.count = input.varint("run table");
+        if (run.tuple.depth > mask || run.tuple.offset < -int(mask + 1)/2 || run.tuple.offset > int(mask)/2) fail("run tuple does not fit the SPRA layout");
+        if (run.tuple.offset == 0 && run.tuple.depth > 0) fail("run tuple has positive depth and offset 0");
+        if (run.count == 0 || run.count > header.tuple_count) fail("run count must be 1..tuple count");
+        return run;
+    };
+    struct Symbol { bool is_run = false; Run run; Byte left = 0, right = 0; };
+    std::array<Symbol,SYMBOLS> symbols{};
     const Count run_count = input.varint("run table");
     if (run_count > SYMBOLS) fail("more than 256 runs");
     if (run_count > header.tuple_count) fail("more distinct runs than logical tuples");
-    std::vector<Run> runs(run_count);
-    const unsigned mask = header.mask();
-    const int low = -int(mask + 1) / 2, high = int(mask) / 2;
-    for (auto& run : runs) {
-        run.tuple.depth = input.required("run table");
-        run.tuple.offset = static_cast<std::int8_t>(input.required("run table"));
-        run.count = input.varint("run table");
-        if (run.tuple.depth > mask || run.tuple.offset < low || run.tuple.offset > high)
-            fail("run tuple does not fit the SPRA layout");
-        if (run.tuple.offset == 0 && run.tuple.depth > 0) fail("run tuple has positive depth and offset 0");
-        if (run.count == 0 || run.count > header.tuple_count) fail("run count must be 1..tuple count");
-    }
+    for (unsigned i = 0; i < run_count; ++i) { symbols[i].is_run = true; symbols[i].run = read_run(); }
     const unsigned rule_count = input.required("rule table");
     if (run_count + rule_count > SYMBOLS) fail("more than 256 runs and rules");
-    std::vector<std::pair<Byte, Byte>> rules(rule_count);
-    for (unsigned k = 0; k < rule_count; ++k) {
-        rules[k].first = input.required("rule table");
-        rules[k].second = input.required("rule table");
-        if (rules[k].first >= run_count + k || rules[k].second >= run_count + k)
-            fail("pair rule refers to a later symbol");
+    unsigned used = static_cast<unsigned>(run_count);
+    for (unsigned i = 0; i < rule_count; ++i) {
+        auto& rule = symbols[used]; rule.left = input.required("rule table"); rule.right = input.required("rule table");
+        if (rule.left >= used || rule.right >= used) fail("pair rule refers to a later symbol");
+        ++used;
     }
-    // Expand every body byte down to runs and write the SPRA file.
-    Writer output(stdout);
-    output.bytes(header.bytes.data(), header.bytes.size());
-    SpraBodyWriter body(output, header.bits);
-    Count expanded = 0;
-    const auto expand = [&](auto& self, unsigned symbol) -> void {
-        if (symbol >= run_count) {
-            self(self, rules[symbol - run_count].first);
-            self(self, rules[symbol - run_count].second);
-            return;
-        }
-        const Run& run = runs[symbol];
+    Writer output(stdout); output.bytes(header.bytes.data(),header.bytes.size());
+    SpraBodyWriter body(output,header.bits); Count expanded = 0;
+    const auto emit_run = [&](const Run& run) {
         if (run.count > header.tuple_count - expanded) fail("runs exceed the logical tuple count");
-        expanded += run.count;
-        body.put(run.tuple, run.count);
+        expanded += run.count; body.put(run.tuple,run.count);
     };
-    const Count body_length = input.varint("body");
-    for (Count i = 0; i < body_length; ++i) {
-        const Byte symbol = input.required("body");
-        if (symbol >= run_count + rule_count) fail("body byte is neither a run nor a rule");
-        expand(expand, symbol);
+    const auto expand = [&](auto& self,unsigned symbol) -> void {
+        if (symbol >= used) fail("body byte is neither a run nor a rule");
+        const auto& entry = symbols[symbol];
+        if (entry.is_run) emit_run(entry.run);
+        else { self(self,entry.left); self(self,entry.right); }
+    };
+    const auto read_body = [&](bool initial) {
+        const Count size = input.varint("body");
+        if (version == 2 && ((!initial && size == 0) || size > MAX_TRAIN_RUNS)) fail("invalid streaming body size");
+        for (Count i = 0; i < size; ++i) expand(expand,input.required("body"));
+        if (version == 2) output.finish();
+    };
+    read_body(true);
+    if (version == 2) for (;;) {
+        const auto tag = input.required("record tag");
+        if (tag == 0) break;
+        if (tag == 1) read_body(false);
+        else if (tag == 2) {
+            if (used == SYMBOLS) fail("more than 256 symbols");
+            symbols[used].is_run = true; symbols[used++].run = read_run();
+        } else if (tag == 3) { emit_run(read_run()); output.finish(); }
+        else fail("unsupported streaming record tag");
     }
     if (expanded != header.tuple_count) fail("runs do not reach the logical tuple count");
     if (input.get() != EOF) fail("extra bytes after body");
-    body.finish();
-    output.finish();
+    body.finish(); output.finish();
 }
-
 struct Options {
     bool encode = false;
-    Count min_count = DEFAULT_MIN_COUNT;
+    bool whole_file = false;
+    Count min_count = 16, train_runs = DEFAULT_TRAIN_RUNS;
     std::optional<Count> max_symbols;
     std::string input = "-";
 };
@@ -443,13 +546,21 @@ Options options(int argc, char** argv) {
     if (command != "encode" && command != "decode") fail(USAGE);
     Options result;
     result.encode = command == "encode";
-    bool has_input = false, has_min_count = false;
+    bool has_input = false, has_min_count = false, has_train = false;
     for (int i = 2; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (result.encode && (arg == "--min-count" || arg.starts_with("--min-count="))) {
             if (has_min_count) fail("duplicate --min-count option");
             has_min_count = true;
             result.min_count = count_value(argc, argv, i, "--min-count");
+        } else if (result.encode && (arg == "--train-runs" || arg.starts_with("--train-runs="))) {
+            if (has_train) fail("duplicate --train-runs option");
+            has_train = true;
+            result.train_runs = count_value(argc, argv, i, "--train-runs");
+            if (!result.train_runs || result.train_runs > MAX_TRAIN_RUNS) fail("--train-runs must be 1..1048576");
+        } else if (result.encode && arg == "--whole-file") {
+            if (result.whole_file) fail("duplicate --whole-file option");
+            result.whole_file = true;
         } else if (!result.encode && (arg == "--max-symbols" || arg.starts_with("--max-symbols="))) {
             if (result.max_symbols) fail("duplicate --max-symbols option");
             result.max_symbols = count_value(argc, argv, i, "--max-symbols");
@@ -460,6 +571,8 @@ Options options(int argc, char** argv) {
             fail("unexpected argument: " + std::string(arg));
         }
     }
+    if (result.whole_file && has_train) fail("--whole-file and --train-runs cannot be combined");
+    if (result.whole_file && !has_min_count) result.min_count = 1024;
     return result;
 }
 } // namespace
@@ -479,7 +592,7 @@ int main(int argc, char** argv) try {
     }
     binary_mode(source);
     binary_mode(stdout);
-    if (args.encode) encode(source, args.min_count);
+    if (args.encode) encode(source, args.min_count, args.train_runs, args.whole_file);
     else decode(source, args.max_symbols);
     return 0;
 } catch (const std::exception& error) {

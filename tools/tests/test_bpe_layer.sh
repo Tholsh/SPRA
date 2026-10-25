@@ -8,6 +8,8 @@ trap 'rm -rf -- "$work"' EXIT
 compiler=${CXX:-g++}
 "$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/bpe_layer.cpp" -o "$work/bpe with spaces.exe"
 "$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/reduced_codec.cpp" -o "$work/codec.exe"
+"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/tests/test_bpe_stream.cpp" -o "$work/stream-tests.exe"
+"$work/stream-tests.exe"
 export SPRA_BPE="$work/bpe with spaces.exe" SPRA_CODEC="$work/codec.exe"
 bpe=$SPRA_BPE
 wrapper=$root/tools/spra-bpe-xz.sh
@@ -36,7 +38,10 @@ for v in a b c; do
     spra=spra_$v spbe=spbe_$v
     hex "${!spra}" > "$work/$v.spra"
     hex "${!spbe}" > "$work/$v.spbe"
-    "$bpe" encode --min-count 2 "$work/$v.spra" | cmp - "$work/$v.spbe"
+    expected=${!spbe}
+    hex "${expected/53504245 01/53504245 02} 00" > "$work/$v.expected-stream"
+    "$bpe" encode --min-count 2 "$work/$v.spra" | cmp - "$work/$v.expected-stream"
+    "$bpe" encode --whole-file --min-count 2 "$work/$v.spra" | cmp - "$work/$v.spbe"
     "$bpe" decode "$work/$v.spbe" | cmp - "$work/$v.spra"
     for count in 0 1 3 1024 --min-count=9; do
         [[ $count == --* ]] && args=("$count") || args=(--min-count "$count")
@@ -45,8 +50,42 @@ for v in a b c; do
     done
     checks=$((checks + 7))
 done
-hex "53504245 01 $hdr_c 02 0002 01 0301 01 00 04 00010001" > "$work/c0.spbe"
+# Many distinct run types and a very long run exercise bounded training,
+# inline definitions, full-dictionary escapes and split-run recombination.
+"$work/stream-tests.exe" --fixture > "$work/many.spra"
+for train in 1 64 65536; do
+    "$bpe" encode --train-runs "$train" "$work/many.spra" > "$work/many.spbe"
+    "$bpe" decode "$work/many.spbe" | cmp - "$work/many.spra"
+done
+# Default output is streaming SPBE 2; proposal vectors still decode identically.
+for v in a b c; do
+    "$bpe" encode --train-runs 1 --min-count 2 "$work/$v.spra" > "$work/$v.stream"
+    [[ $(od -An -tu1 -j4 -N1 "$work/$v.stream" | tr -d ' ') == 2 ]]
+    "$bpe" decode "$work/$v.stream" | cmp - "$work/$v.spra"
+    bytes=$(wc -c < "$work/$v.stream")
+    for ((cut=0;cut<bytes;cut++)); do
+        head -c "$cut" "$work/$v.stream" > "$work/stream-cut"
+        if "$bpe" decode "$work/stream-cut" > /dev/null 2>&1; then echo 'truncated stream accepted' >&2;exit 1;fi
+    done
+    cat "$work/$v.stream" <(printf x) > "$work/stream-extra"
+    if "$bpe" decode "$work/stream-extra" > /dev/null 2>&1; then exit 1;fi
+done
+# These streams exercise inline run definitions and raw-run escape records.
+for records in '02 0002 02 01 01 01 00' '03 0002 02 00'; do
+    hex "53504245 02 $hdr_b 01 0002 01 00 01 00 $records" > "$work/inline.spbe"
+    "$bpe" decode "$work/inline.spbe" | cmp - "$work/b.spra"
+done
+for records in '04' '01 00' '02 0002 00 00' '03 0002 04 00' '01 81808001'; do
+    hex "53504245 02 $hdr_b 01 0002 01 00 01 00 $records" > "$work/invalid-stream.spbe"
+    if "$bpe" decode "$work/invalid-stream.spbe" > /dev/null 2>&1; then echo 'bad streaming record accepted' >&2;exit 1;fi
+done
+for args in 'encode --train-runs 0' 'encode --train-runs 1048577' 'encode --legacy' 'encode --whole-file --train-runs 1' 'encode --whole-file --whole-file' 'decode --whole-file' 'encode --train-runs 1 --train-runs 2' 'decode --legacy'; do
+    if "$bpe" $args < /dev/null > /dev/null 2>&1; then echo "invalid streaming option: $args" >&2;exit 1;fi
+done
+hex "53504245 02 $hdr_c 02 0002 01 0301 01 00 04 00010001 00" > "$work/c0.spbe"
 "$bpe" encode "$work/c.spra" | cmp - "$work/c0.spbe"
+hex "53504245 01 $hdr_c 02 0002 01 0301 01 00 04 00010001" > "$work/c0.whole.spbe"
+"$bpe" encode --whole-file "$work/c.spra" | cmp - "$work/c0.whole.spbe"
 # Non-canonical RLE (02 10 10) comes back as the canonical body 02 20.
 hex '53505241 02 44 00 03 0500000000000000 0300000000000000 0000 021010' > "$work/split.spra"
 "$bpe" encode "$work/split.spra" | "$bpe" decode | cmp - "$work/b.spra"
@@ -59,7 +98,7 @@ done
 cat "$work/c.spbe" <(printf x) > "$work/extra.spbe"
 expect_fail "$work/extra.spbe" 'extra bytes'
 for case in "magic|53504246 01 $hdr_a 01 0301 01 00 01 00|not an SPBE file" \
-            "version|53504245 02 $hdr_a 01 0301 01 00 01 00|unsupported SPBE version" \
+            "version|53504245 03 $hdr_a 01 0301 01 00 01 00|unsupported SPBE version" \
             "runs|53504245 01 $hdr_a 02 0301 01 0302 01 00 01 00|more distinct runs" \
             "offset|53504245 01 $hdr_a 01 0308 01 00 01 00|does not fit" \
             "marker|53504245 01 $hdr_a 01 0100 01 00 01 00|offset 0" \
@@ -89,7 +128,7 @@ for case in "53505241 01 44 00 03 0900000000000000 0100000000000000 0001 31|vers
     IFS='|' read -r bytes message <<< "$case"
     hex "$bytes" > "$work/bad.spra"
     if "$bpe" encode "$work/bad.spra" > "$work/out" 2> "$work/error"; then echo "encode accepted: $message" >&2; exit 1; fi
-    [[ ! -s $work/out ]] && grep -q -- "$message" "$work/error"
+    grep -q -- "$message" "$work/error"
     checks=$((checks + 1))
 done
 for args in '' 'unknown' 'encode --min-count' 'encode --min-count x' 'encode --min-count 1 --min-count 2' \
@@ -124,7 +163,22 @@ for archive in "$root"/words/9/*/*.spra.xz "$root"/words/10/*/*.spra.xz "$root"/
 done
 bash "$wrapper" pack - -- -6e --check=crc32 < "$root/words/9/408731/superperm9_408731_19_canonical.spra.xz" > "$work/custom.bpe.xz"
 bash "$wrapper" unpack "$work/custom.bpe.xz" -- --memlimit-decompress=64MiB | cmp - <(xz -dc "$root/words/9/408731/superperm9_408731_19_canonical.spra.xz")
+bash "$wrapper" pack --whole-file --min-count 2 "$root/words/9/408731/superperm9_408731_19_canonical.spra.xz" > "$work/whole.bpe.xz"
+bash "$wrapper" unpack "$work/whole.bpe.xz" | cmp - <(xz -dc "$root/words/9/408731/superperm9_408731_19_canonical.spra.xz")
 for args in 'unknown' 'decode one two' 'pack one two'; do
     if bash "$wrapper" $args < /dev/null > /dev/null 2>&1; then echo "bad wrapper arguments accepted: $args" >&2; exit 1; fi
 done
-echo "SPBE layer: $checks checks passed"
+archive="$root/words/12/522736969/superpermutation-12-522736969.spra.xz"
+bash "$wrapper" pack "$archive" > "$work/live.bpe.xz"
+xz -dc "$archive" > "$work/live.spra"
+bash "$wrapper" decode --strict "$work/live.bpe.xz" | sha256sum > "$work/live.sha"
+xz -dc "$archive" | "$SPRA_CODEC" decode | sha256sum > "$work/source.sha"
+cmp "$work/live.sha" "$work/source.sha"
+if bash "$wrapper" decode --max-symbols 100 "$work/live.bpe.xz" > /dev/null 2>&1; then exit 1;fi
+if command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$root/tools/tests/test_bpe_live.ps1")" \
+        -Tool "$(cygpath -w "$SPRA_BPE")" -Codec "$(cygpath -w "$SPRA_CODEC")" \
+        -Spra "$(cygpath -w "$work/live.spra")" -Archive "$(cygpath -w "$work/live.bpe.xz")" \
+        -Xz "$(cygpath -w "$(command -v xz)")"
+fi
+echo "SPBE layer: $checks reference checks plus streaming, inline-record, corpus and live-pipeline checks passed"

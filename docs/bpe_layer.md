@@ -1,10 +1,16 @@
-# SPBE: an optional byte-pair layer between SPRA 0.2 and xz (proposal)
+# SPBE 1: Halfar's original whole-file byte-pair layer
 
-This is a proposal for an optional layer. It does not change SPRA 0.2: an SPBE
+**Integration note:** This is Halfar's original SPBE 1 proposal and its
+whole-file measurements, imported from PR #2 at commit
+`d037d4858cbdbaa4126eb42c45e7b88272301260`. The current default is
+[streaming SPBE 2](bpe_streaming.md). Use `--whole-file` to select this encoder;
+decoding supports both versions. Recipes were not imported.
+
+The original optional layer does not change SPRA 0.2: an SPBE
 file holds the logical tuples of one SPRA 0.2 file, and decoding it gives back
 that SPRA file byte for byte (for every file `reduced-codec encode` writes).
-Whether this becomes part of the project, and in what form, is the repository
-owner's decision.
+This document retains the original format and whole-file benchmark details;
+the streaming encoder is documented separately above.
 
 [`tools/bpe_layer.cpp`](../tools/bpe_layer.cpp) converts SPRA 0.2 to SPBE and
 back; [`tools/spra-bpe-xz.sh`](../tools/spra-bpe-xz.sh) adds the codec and xz.
@@ -49,7 +55,7 @@ bash tools/spra-bpe-xz.sh unpack n12.bpe.xz |
 ```
 
 ```text
-spra-bpe encode [--min-count COUNT] [INPUT|-]     SPRA 0.2 -> SPBE (default COUNT 1024)
+spra-bpe encode --whole-file [--min-count COUNT] [INPUT|-]   SPRA 0.2 -> SPBE 1 (default COUNT 1024)
 spra-bpe decode [--max-symbols COUNT] [INPUT|-]   SPBE -> SPRA 0.2
 spra-bpe-xz.sh encode [--bits 4|6] [-z] N [INPUT|-] [-- XZ_ARGS...]
 spra-bpe-xz.sh decode [INPUT|-] [-- XZ_ARGS...]

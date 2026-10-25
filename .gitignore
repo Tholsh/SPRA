@@ -1,5 +1,7 @@
 paint-waste.exe
 /build/
+# Keep BPE intermediates out of commits; compressed .bpe.xz files stay eligible.
+*.spbe
 *.exe
 *.dll
 *.o

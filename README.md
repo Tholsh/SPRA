@@ -42,7 +42,14 @@ cmd /c '.\build\reduced-codec.exe decode word-n5.spra > restored-n5.txt'
 
 Check the exit status before keeping output; errors go to stderr. See the [binary format and run guide](docs/reduced_binary.md) for stdin and xz pipelines, zero-based labels, the complete header and decoding rules, representability limits, and regression checks. The painted-word tool and its historical displayed indices remain separate.
 
+The optional [byte-pair layer](docs/bpe_streaming.md), based on Halfar's PR #2,
+now streams by default using a bounded training prefix and fixed pair rules.
+`bash tools/spra-bpe-xz.sh pack input.spra.xz > output.bpe.xz` converts an
+existing archive; `decode output.bpe.xz` streams raw word symbols to stdout.
+SPRA itself is unchanged; see [measurements](docs/bpe-stream-benchmark.md).
+
 ## Relabel word files
+
 
 [`tools/relabel_words.cpp`](tools/relabel_words.cpp) converts between zero-based `0123456789ABC` and one-based `123456789ABCD` labels. Build it with `g++ -std=c++20 -O2 tools/relabel_words.cpp -o build/relabel-words` (create `build/` first). See [tools and regression checks](docs/tools.md) for all build commands and dependencies. `--to 0` expects one-based input; `--to 1` expects zero-based input. Each uppercase letter is one symbol (`9` becomes `A` when converting to one-based labels). Whitespace, line endings, word length, and filenames are preserved. Optionally use `-n N` to validate the source alphabet size; the default is 13. Only word symbols and ASCII whitespace are accepted.
 

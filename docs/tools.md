@@ -12,6 +12,7 @@ mkdir -p build
 g++ -std=c++20 -O2 -Wall -Wextra tools/relabel_words.cpp -o build/relabel-words
 g++ -std=c++20 -O2 -Wall -Wextra tools/reduced_codec.cpp -o build/reduced-codec
 g++ -std=c++20 -O2 -Wall -Wextra tools/paint_waste.cpp -o build/paint-waste
+g++ -std=c++20 -O2 -Wall -Wextra tools/bpe_layer.cpp -o build/spra-bpe
 ```
 
 MinGW adds `.exe`. Build outputs belong in the ignored `build/` directory.
@@ -69,6 +70,7 @@ when measurement is unnecessary.
 bash tools/tests/test_reduced_codec.sh
 bash tools/tests/test_reduced_alphabet.sh
 bash tools/tests/test_relabel_words.sh
+bash tools/tests/test_bpe_layer.sh
 ```
 
 Each runner compiles into an OS temporary directory and cleans it on exit.
