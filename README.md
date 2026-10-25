@@ -1,6 +1,9 @@
 # Superpermutation Reduced Alphabet
 
-The entire purpose of this code is to make enumeration of n=14 and n=15 superpermutations achievable. Currently version `V0.2` is capable of doing this. There is room for improvement here, and space for discussion of information theory.
+The entire purpose of this code is to make enumeration of n=14 and n=15 superpermutations achievable. Currently version `V0.2.1` is capable of doing this. There is room for improvement here, and space for discussion of information theory.
+
+See the [draft changelog](CHANGELOG.md) and [v0.2.1 release notes](docs/releases/v0.2.1.md).
+The software version is 0.2.1; the SPRA binary format remains 0.2.
 
 This code / corpus repo was meant to be imported as a submodule and used in personal repos.
 
