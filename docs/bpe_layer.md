@@ -1,10 +1,10 @@
-# SPBE 1: Halfar's original whole-file byte-pair layer
+# SPBE: whole-file byte-pair layer
 
-**Integration note:** This is Halfar's original SPBE 1 proposal and its
+**Integration note:** This is Halfar's whole-file byte-pair code and its
 whole-file measurements, imported from PR #2 at commit
 `d037d4858cbdbaa4126eb42c45e7b88272301260`. The current default is
-[streaming SPBE 2](bpe_streaming.md). Use `--whole-file` to select this encoder;
-decoding supports both versions. Recipes were not imported.
+[streaming SPBE](bpe_streaming.md). Use `--whole-file` to select this encoder;
+decoding supports both modes. Recipes were not imported.
 
 The original optional layer does not change SPRA 0.2: an SPBE
 file holds the logical tuples of one SPRA 0.2 file, and decoding it gives back
@@ -55,7 +55,7 @@ bash tools/spra-bpe-xz.sh unpack n12.bpe.xz |
 ```
 
 ```text
-spra-bpe encode --whole-file [--min-count COUNT] [INPUT|-]   SPRA 0.2 -> SPBE 1 (default COUNT 1024)
+spra-bpe encode --whole-file [--min-count COUNT] [INPUT|-]   SPRA 0.2 -> whole-file SPBE (default COUNT 1024)
 spra-bpe decode [--max-symbols COUNT] [INPUT|-]   SPBE -> SPRA 0.2
 spra-bpe-xz.sh encode [--bits 4|6] [-z] N [INPUT|-] [-- XZ_ARGS...]
 spra-bpe-xz.sh decode [INPUT|-] [-- XZ_ARGS...]
@@ -85,7 +85,7 @@ most 10 bytes and a value below 2^64.
 | Offset | Size | Field |
 | ---: | ---: | --- |
 | 0 | 4 | ASCII `SPBE` (`53 50 42 45`). |
-| 4 | 1 | SPBE version `0x01`. |
+| 4 | 1 | Mode byte `0x01` (whole-file). |
 | 5 | `24 + min(length, N-1)` | The SPRA 0.2 header and seed, unchanged. The SPRA version byte must be `0x02`. |
 
 Then, with nothing after them:
@@ -108,7 +108,7 @@ a literal at the start of every maximal run of equal tuples, then markers of
 `2^B - 2` repeats, then one marker with the remainder if it is not zero; MSB
 first, zero padding.
 
-A decoder refuses: a wrong magic or version, an invalid SPRA header (version,
+A decoder refuses: a wrong magic or mode, an invalid SPRA header (version,
 layout, flags, N, tuple count above length minus seed, seed symbol outside N),
 more than 256 runs and rules, a run, rule or body byte outside its range, runs
 that do not add up to the tuple count, a truncated file, extra bytes, and a
@@ -137,7 +137,7 @@ tuples and stay as they are.
 For `123121321` at N=3 (SPRA body `31`, one tuple `(3,+1)`):
 
 ```text
-53 50 42 45 01                        SPBE, version 1
+53 50 42 45 01                        SPBE, whole-file mode
 53 50 52 41 02 44 00 03 09 00 00 00   the SPRA header ...
 00 00 00 00 01 00 00 00 00 00 00 00
 00 01                                 ... and seed

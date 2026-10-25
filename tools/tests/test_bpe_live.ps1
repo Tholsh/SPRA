@@ -54,10 +54,14 @@ function Test-Live($commands,[byte[]]$inputBytes,[bool]$capture) {
 $bytes=[IO.File]::ReadAllBytes($Spra)
 $encoded=Test-Live @(@{Exe=$Tool;Args='encode'}) $bytes $true
 $decoded=Test-Live @(@{Exe=$Tool;Args='decode'}) $encoded $true
+$liveXz=Test-Live @(@{Exe=$Xz;Args='-c -T1 --block-size=256KiB --lzma2=preset=9e,dict=256MiB,lc=0,lp=0,pb=0'}) $encoded $true
+$liveXzDecoded=Test-Live @(@{Exe=$Xz;Args='-dc'}) $liveXz $true
 $sha=[Security.Cryptography.SHA256]::Create()
 try {
     if([BitConverter]::ToString($sha.ComputeHash($bytes)) -ne [BitConverter]::ToString($sha.ComputeHash($decoded))){throw 'Live SPBE round trip mismatch'}
+    if([BitConverter]::ToString($sha.ComputeHash($encoded)) -ne [BitConverter]::ToString($sha.ComputeHash($liveXzDecoded))){throw 'Live xz round trip mismatch'}
 }finally{$sha.Dispose()}
 $compressed=[IO.File]::ReadAllBytes($Archive)
 [void](Test-Live @(@{Exe=$Xz;Args='-dc'},@{Exe=$Tool;Args='decode'},@{Exe=$Codec;Args='decode'}) $compressed $false)
 Write-Output 'Live encode, live decode, and .bpe.xz -> raw word all produced payload before input EOF.'
+Write-Output 'xz compression with 256KiB blocks also produced payload before EOF and round-tripped exactly.'

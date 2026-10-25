@@ -1,13 +1,8 @@
-# Streaming byte pairs (SPBE 2)
+# Streaming byte pairs
 
-Halfar's byte-pair layer from PR #2 is integrated; recipes are not included.
-The default encoder now writes **SPBE 2**, using a bounded learning prefix and
-incremental pair substitution. Use `--whole-file` for Halfar's original SPBE 1
-encoder, which buffers all runs before emitting the encoded file. Decoding accepts both.
+Improving on the original byte-pairs code, this layer can now be streamed. The default encoder now utilizes this, using a bounded learning prefix and incremental pair substitution. Use `--whole-file` for the original SPBE encoder, which buffers all runs before emitting the encoded file. Decoding accepts both.
 
-This retains his important transformation: tuple runs become stable byte
-symbols, frequent pairs become more byte symbols, and xz handles larger
-repetition. It is not the discarded byte-level LZW experiment.
+This retains the important transformation: tuple runs become stable byte symbols, frequent pairs become more byte symbols, and xz handles larger repetition. Still, xz on the raw .spra file most often yields lower file size.
 
 ## Build and use
 
@@ -31,7 +26,6 @@ bash tools/spra-bpe-xz.sh unpack output.bpe.xz > restored.spra
 
 # Encode a new word. The original SPRA encoder still performs its initial spool.
 bash tools/spra-bpe-xz.sh encode 5 words/5/153/153-recursive.txt > n5.bpe.xz
-
 ```
 
 On Windows keep binary pipes in MSYS2/Git Bash or `cmd /c`. MinGW adds `.exe`.
@@ -51,7 +45,13 @@ decode/unpack. The defaults are
 Standard `XZ_OPT`/`XZ_DEFAULTS` still apply. xz is never restarted at record
 boundaries, so its dictionary can match across the entire BPE stream.
 
-## What streams, and what remains buffered
+Default xz accepts incremental input but may hold compressed payload until EOF
+on smaller streams. Raw decoding streams independently of this encoding delay.
+For earlier compressed output, pass `--block-size=256KiB` along with the other
+xz settings after `--`. This restarts the dictionary per xz block and reduces
+compression; see the [latency measurements](bpe-stream-benchmark.md#xz-output-latency-check).
+
+## What streams, what remains buffered, and the dictionary
 
 The BPE encoder does not accumulate the entire file or write a temporary file.
 It learns from at most 65,536 run symbols by default, then freezes its pair
@@ -82,17 +82,17 @@ the whole existing-archive conversion, and `decode` streams all the way to raw
 symbols; `encode` of a new word retains that initial SPRA delay. SPRA's tail
 reconstruction, strict mode and Halfar's decode limits are preserved.
 
-## SPBE 2 wire format
+## SPBE wire format
 
 The copied SPRA header, seed, tuple meanings, varints and run/pair table entries
-are as specified in [Halfar's SPBE 1 description](bpe_layer.md). SPBE 2 changes
-only its outer version byte and the streaming records following the initial body.
+are as specified in the [whole-file format description](bpe_layer.md).
+Streaming mode uses a mode byte and records following the initial body.
 
 | Part | Contents |
 | --- | --- |
-| Prefix | ASCII `SPBE`, version byte `02`, original SPRA 0.2 header and seed |
+| Prefix | ASCII `SPBE`, mode byte `02` (streaming), original SPRA 0.2 header and seed |
 | Initial dictionary | Varint T; T run entries; byte R; R pair definitions, with T+R <= 256 |
-| Initial body | Varint length; that many symbol bytes, as in SPBE 1 |
+| Initial body | Varint length; that many symbol bytes, as in whole-file mode |
 | Records | Zero or more records listed below, then an explicit END record |
 
 The initial body can be empty. Initial run IDs are 0..T-1; rule k has ID T+k,

@@ -4,7 +4,7 @@
 // Distributed without warranty; see the repository LICENSE for full terms.
 
 // Halfar's optional layer between SPRA 0.2 and xz, integrated from PR #2.
-// SPBE 2 uses bounded-prefix learning and
+// Streaming SPBE uses bounded-prefix learning and
 // incremental fixed-rule substitution. See docs/bpe_streaming.md.
 // Each run of equal logical tuples becomes one byte, and byte-pair encoding
 // (Re-Pair stopped early, at most 255 pair rules) folds the commonest
@@ -47,9 +47,9 @@ constexpr const char* USAGE =
     "usage: spra-bpe encode [--min-count COUNT] [--train-runs COUNT | --whole-file] [INPUT|-]\n"
     "       spra-bpe decode [--max-symbols COUNT] [INPUT|-]\n"
     "  encode reads SPRA 0.2 and writes SPBE; decode reads SPBE and writes SPRA 0.2.\n"
-    "  Default: streaming SPBE 2, train on up to 65536 runs, min-count 16.\n"
+    "  Default: streaming SPBE, train on up to 65536 runs, min-count 16.\n"
     "  --train-runs: training prefix limit, 1..1048576; one fixed dictionary per file.\n"
-    "  --whole-file: buffer all runs and write SPBE 1 (default min-count 1024).\n"
+    "  --whole-file: buffer all runs and write whole-file SPBE (default min-count 1024).\n"
     "  --max-symbols: refuse a header length above COUNT (default N * N!).\n"
     "  Omitted INPUT or '-' reads stdin; output goes to stdout. Compress with xz.\n";
 
@@ -457,8 +457,8 @@ Count default_max_symbols(unsigned n) {
 void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) {
     Reader input(source);
     for (Byte expected : MAGIC) if (input.required("header") != expected) fail("not an SPBE file");
-    const unsigned version = input.required("header");
-    if (version != 1 && version != 2) fail("unsupported SPBE version");
+    const unsigned mode = input.required("header");
+    if (mode != 1 && mode != 2) fail("unsupported SPBE mode");
     const Header header = read_spra_header(input);
     const Count limit = max_symbols ? *max_symbols : default_max_symbols(header.n);
     if (header.length > limit) fail("header length " + std::to_string(header.length) + " exceeds " + (max_symbols ? "--max-symbols " : "N * N! = ") + std::to_string(limit));
@@ -499,12 +499,12 @@ void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt) 
     };
     const auto read_body = [&](bool initial) {
         const Count size = input.varint("body");
-        if (version == 2 && ((!initial && size == 0) || size > MAX_TRAIN_RUNS)) fail("invalid streaming body size");
+        if (mode == 2 && ((!initial && size == 0) || size > MAX_TRAIN_RUNS)) fail("invalid streaming body size");
         for (Count i = 0; i < size; ++i) expand(expand,input.required("body"));
-        if (version == 2) output.finish();
+        if (mode == 2) output.finish();
     };
     read_body(true);
-    if (version == 2) for (;;) {
+    if (mode == 2) for (;;) {
         const auto tag = input.required("record tag");
         if (tag == 0) break;
         if (tag == 1) read_body(false);

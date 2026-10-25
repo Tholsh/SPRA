@@ -9,8 +9,8 @@ usage() {
        spra-bpe-xz.sh pack [BPE_OPTIONS] [INPUT|-] [-- XZ_ARGS...]
        spra-bpe-xz.sh unpack [--max-symbols COUNT] [INPUT|-] [-- XZ_ARGS...]
 
-Streaming SPBE 2 by default (docs/bpe_streaming.md), with SPBE 1 decode support.
-BPE_OPTIONS: --train-runs COUNT, --min-count COUNT, or --whole-file (buffered SPBE 1).
+Streaming SPBE by default (docs/bpe_streaming.md); decoding supports both modes.
+BPE_OPTIONS: --train-runs COUNT, --min-count COUNT, or --whole-file (whole-file buffering).
 encode: word -> .bpe.xz       decode: .bpe.xz -> word
 pack:   .spra.xz -> .bpe.xz   unpack: .bpe.xz -> raw SPRA 0.2 (pipe to xz for .spra.xz)
 Every command writes only its result to stdout and preserves input files.

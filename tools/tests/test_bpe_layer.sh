@@ -57,7 +57,7 @@ for train in 1 64 65536; do
     "$bpe" encode --train-runs "$train" "$work/many.spra" > "$work/many.spbe"
     "$bpe" decode "$work/many.spbe" | cmp - "$work/many.spra"
 done
-# Default output is streaming SPBE 2; proposal vectors still decode identically.
+# Default output is streaming SPBE; whole-file vectors still decode identically.
 for v in a b c; do
     "$bpe" encode --train-runs 1 --min-count 2 "$work/$v.spra" > "$work/$v.stream"
     [[ $(od -An -tu1 -j4 -N1 "$work/$v.stream" | tr -d ' ') == 2 ]]
@@ -98,7 +98,7 @@ done
 cat "$work/c.spbe" <(printf x) > "$work/extra.spbe"
 expect_fail "$work/extra.spbe" 'extra bytes'
 for case in "magic|53504246 01 $hdr_a 01 0301 01 00 01 00|not an SPBE file" \
-            "version|53504245 03 $hdr_a 01 0301 01 00 01 00|unsupported SPBE version" \
+            "mode|53504245 03 $hdr_a 01 0301 01 00 01 00|unsupported SPBE mode" \
             "runs|53504245 01 $hdr_a 02 0301 01 0302 01 00 01 00|more distinct runs" \
             "offset|53504245 01 $hdr_a 01 0308 01 00 01 00|does not fit" \
             "marker|53504245 01 $hdr_a 01 0100 01 00 01 00|offset 0" \

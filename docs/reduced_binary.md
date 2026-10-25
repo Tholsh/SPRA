@@ -28,10 +28,6 @@ On Windows, create `build/` and compile with MinGW GCC using
 `g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced-codec.exe`.
 Alternatively compile directly into the repository root:
 
-```sh
-g++ -std=c++20 -O2 -Wall -Wextra -pedantic tools/reduced_codec.cpp -o reduced-codec
-```
-
 The interface is unchanged:
 
 ```text
@@ -44,6 +40,8 @@ Both commands write only their result to stdout. Errors go to stderr, returning
 status 1; success returns 0 and is quiet, except for the one-line note of
 encode when it falls back to six-bit fields. Decode writes no final newline.
 
+## Safety Constraints
+
 Decode refuses a header length above N * N! before writing anything. N * N! is
 the length of all N! permutations written one after another, so no useful word
 is longer. `--max-symbols COUNT` (or `--max-symbols=COUNT`) replaces that limit
@@ -53,6 +51,8 @@ the decoder write clean steps until the disk is full, and xz shrinks such a
 file to almost nothing. The default only catches impossible lengths: at N=13 it
 still allows 80,951,270,400 symbols, and from N=20 on N * N! exceeds the 64-bit
 length field, so only `--max-symbols` limits those files.
+
+## Superpermtuation Canon
 
 `--strict` accepts only the canonical file of a word, the one encode writes
 without `--bits`, and refuses every other valid file with a message starting
