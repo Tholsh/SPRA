@@ -6,11 +6,11 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/spra-bpe-tests.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 compiler=${CXX:-g++}
-"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/bpe_layer.cpp" -o "$work/bpe with spaces.exe"
-"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/reduced_codec.cpp" -o "$work/codec.exe"
-"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/tests/test_bpe_stream.cpp" -o "$work/stream-tests.exe"
-"$work/stream-tests.exe"
-export SPRA_BPE="$work/bpe with spaces.exe" SPRA_CODEC="$work/codec.exe"
+"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/bpe_layer.cpp" -o "$work/bpe with spaces"
+"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/reduced_codec.cpp" -o "$work/codec"
+"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/tests/test_bpe_stream.cpp" -o "$work/stream-tests"
+"$work/stream-tests"
+export SPRA_BPE="$work/bpe with spaces" SPRA_CODEC="$work/codec"
 bpe=$SPRA_BPE
 wrapper=$root/tools/spra-bpe-xz.sh
 checks=0
@@ -52,7 +52,7 @@ for v in a b c; do
 done
 # Many distinct run types and a very long run exercise bounded training,
 # inline definitions, full-dictionary escapes and split-run recombination.
-"$work/stream-tests.exe" --fixture > "$work/many.spra"
+"$work/stream-tests" --fixture > "$work/many.spra"
 for train in 1 64 65536; do
     "$bpe" encode --train-runs "$train" "$work/many.spra" > "$work/many.spbe"
     "$bpe" decode "$work/many.spbe" | cmp - "$work/many.spra"
@@ -175,10 +175,6 @@ bash "$wrapper" decode --strict "$work/live.bpe.xz" | sha256sum > "$work/live.sh
 xz -dc "$archive" | "$SPRA_CODEC" decode | sha256sum > "$work/source.sha"
 cmp "$work/live.sha" "$work/source.sha"
 if bash "$wrapper" decode --max-symbols 100 "$work/live.bpe.xz" > /dev/null 2>&1; then exit 1;fi
-if command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$root/tools/tests/test_bpe_live.ps1")" \
-        -Tool "$(cygpath -w "$SPRA_BPE")" -Codec "$(cygpath -w "$SPRA_CODEC")" \
-        -Spra "$(cygpath -w "$work/live.spra")" -Archive "$(cygpath -w "$work/live.bpe.xz")" \
-        -Xz "$(cygpath -w "$(command -v xz)")"
-fi
+bash "$root/tools/tests/test_bpe_live.sh" "$SPRA_BPE" "$SPRA_CODEC" "$work/live.bpe.xz" "$work/live.spra"
+
 echo "SPBE layer: $checks reference checks plus streaming, inline-record, corpus and live-pipeline checks passed"

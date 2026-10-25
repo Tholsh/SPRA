@@ -10,5 +10,4 @@ else
     script_dir="$PWD"
 fi
 tool=${RELABEL_TOOL:-"$script_dir/../build/relabel-words"}
-[[ ! -f "$tool.exe" ]] || tool+=.exe
 exec "$tool" --recursive "$@"

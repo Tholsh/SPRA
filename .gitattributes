@@ -1,8 +1,0 @@
-*.sh text eol=lf
-*.cpp text eol=lf
-*.md text eol=lf
-*.ps1 text eol=crlf
-*.spra.xz binary
-*.spbe binary
-*.tar.xz binary
-*.xz binary

@@ -14,7 +14,8 @@ version 1. Width and alphabet mode are detected from the header.
 
 ## Build and run
 
-From the repository root, with a C++20 compiler:
+In WSL/Linux Bash, from the repository root, with a C++20 compiler
+(see [setup](tools.md#wsl--linux-setup)):
 
 ```sh
 mkdir -p build
@@ -23,10 +24,6 @@ g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 ./build/reduced_codec encode --bits 6 5 words/5/153/153-recursive.txt > word-n5-six.spra
 ./build/reduced_codec decode word-n5.spra > restored-n5.txt
 ```
-
-On Windows, create `build/` and compile with MinGW GCC using
-`g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe`.
-Alternatively compile directly into the repository root:
 
 The interface is unchanged:
 
@@ -97,7 +94,7 @@ options after `--`, such as `--memlimit-decompress=64MiB`. Named source files ar
 preserved; the wrapper writes to stdout and does not open an output filename.
 It requires Bash and xz on PATH. `SPRA_CODEC=/path/to/reduced_codec` overrides
 codec discovery; otherwise it searches `build/` then the repository root,
-including `.exe` names. Script discovery is independent of the current directory.
+Script discovery is independent of the current directory.
 
 The wrapper uses `pipefail`, so failure of either stage returns a nonzero
 status. When adding an outer pipeline, also enable `pipefail` in the calling
@@ -140,25 +137,6 @@ The equivalent explicit pipeline is:
 set -o pipefail
 ./build/reduced_codec encode 5 words/5/153/153-recursive.txt | xz -6e > word-n5.spra.xz
 xz -dc word-n5.spra.xz | ./build/reduced_codec decode > restored-n5.txt
-```
-
-### PowerShell binary redirection
-
-Use Bash through MSYS2/Git Bash, or use `cmd /c` for byte-preserving redirection.
-Do not pass SPRA bytes through `Get-Content`, `Out-File`, or a text encoding.
-The codec sets its Windows streams to binary mode itself.
-
-```powershell
-New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
-cmd /c '.\build\reduced_codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
-if ($LASTEXITCODE -ne 0) { throw 'Encoding failed; discard output.' }
-cmd /c 'xz -6e < word-n5.spra > word-n5.spra.xz'
-if ($LASTEXITCODE -ne 0) { throw 'Compression failed; discard output.' }
-cmd /c 'xz -d < word-n5.spra.xz > unpacked.spra'
-if ($LASTEXITCODE -ne 0) { throw 'Decompression failed; discard output.' }
-cmd /c '.\build\reduced_codec.exe decode unpacked.spra > restored-n5.txt'
-if ($LASTEXITCODE -ne 0) { throw 'Decoding failed; discard output.' }
 ```
 
 ## Logical tuples and repeat markers
@@ -394,7 +372,7 @@ bash tools/spra-xz.sh decode words/13/6747918058/superpermutation-13-6747918058.
 bash tools/benchmark_reduced_codec.sh --prefix-bytes 16777216 13 restored-n13.txt --xz-arg=-6e
 ```
 
-The script prefers `build/reduced_codec[.exe]`, falling back to the repository
+The script prefers `build/reduced_codec`, falling back to the repository
 root. Use `--codec PATH` to choose another binary, `--bits 6` for one width,
 and repeated `--xz-arg=OPTION` arguments to configure compression. A rejected
 width is reported with its error. Input archives are decompressed and normalized

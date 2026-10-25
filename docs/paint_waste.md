@@ -4,15 +4,8 @@ For binary compression and decompression, use the separate [SPRA 0.2 codec and x
 
 `tools/paint_waste.cpp` reads one word from stdin, with `1 <= N <= 13`, on a 64-bit platform. By default its alphabet is the first N characters of `123456789ABCD`. Use `-z` or `--zero-based` for the first N characters of `0123456789ABC`. Each character is one symbol; letters are uppercase. For example, zero-based N=11 uses `0123456789A`, not decimal numbers separated by spaces. Whitespace is ignored. Multiple lines are concatenated into a single word; a collection of separate words must be checked one word at a time. Four large N=6 collections use tar+xz; N>=9 uses one-based SPRA plus xz. The N=6 `1/` and `base/` examples remain uncompressed. See the [unpacking and streaming guide](corpus.md). See the [corpus layout](../README.md#corpus).
 
-From the repository root, compile with GCC and C++20:
-
-```powershell
-New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/paint_waste.cpp -o build/paint-waste.exe
-Get-Content words/5/153/153-recursive.txt | ./build/paint-waste.exe 5
-```
-
-On Linux, macOS, or MSYS2 Bash:
+In WSL/Linux Bash, from the repository root, compile with GCC and C++20
+(see [setup](tools.md#wsl--linux-setup)):
 
 ```sh
 mkdir -p build
@@ -40,10 +33,10 @@ Use `-s` for statistics only, without color codes, the word, reduced pairs, or s
 
 Use `-m` to paint each dirty character with brackets instead of ANSI color. Each dirty character is individually marked `[X]`; consecutive dirty characters appear as `[X][Y]`. Clean characters stay unmarked. The reduced-alphabet pairs and the statistical output are identical to the default output. `-m` changes only the painted word and emits no color escapes.
 
-```powershell
-'123121321' | ./build/paint-waste.exe -m 3
+```sh
+printf '%s\n' '123121321' | ./build/paint-waste -m 3
 # First line: 12312[1]321
-'012010210' | ./build/paint-waste.exe -z -m 3
+printf '%s\n' '012010210' | ./build/paint-waste -z -m 3
 # First line: 01201[0]210
 ```
 
@@ -53,18 +46,14 @@ For **N > 9**, output is always statistics-only. Without explicit `-s`, the tool
 
 Statistics-only mode streams the word instead of retaining it. Exact coverage uses one bit per required permutation: roughly 4.8 MiB at N=11, 57.1 MiB at N=12, and 742.3 MiB at N=13, plus small input buffers. Allocation or input failures exit with status 1.
 
-```powershell
-# Same valid N=3 word relabeled from 123 to 012.
-'012010210' | ./build/paint-waste.exe -z -s 3
-# Validate the one-based N=11 stream; explicit -s avoids the confirmation prompt.
-cmd /c 'xz -dc words\11\43930624\superpermutation-11-43930624.spra.xz | .\build\reduced_codec.exe decode | .\build\paint-waste.exe -s 11'
-```
-
-The N=3 example pipes a literal word. The N=11 pipeline decodes the compressed SPRA archive without creating an intermediate word file. In a POSIX shell:
-
 ```sh
+# Same valid N=3 word relabeled from 123 to 012.
+printf '%s\n' '012010210' | ./build/paint-waste -z -s 3
+# Validate the one-based N=11 stream; explicit -s avoids the confirmation prompt.
 bash tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz | ./build/paint-waste -s 11
 ```
+
+The N=3 example pipes a literal word. The N=11 pipeline decodes the compressed SPRA archive without creating an intermediate word file.
 
 The N=3 example reports length 9, six distinct permutations, none missing, and `valid_superpermutation: 1`. Changing labels does not change coverage statistics or reduced pairs; painted output retains the selected labels.
 
@@ -91,8 +80,8 @@ Validity checks actual distinct coverage, not just the number of clean windows. 
 
 ## Concrete validation
 
-```powershell
-'123121321' | ./build/paint-waste.exe -s 3
+```sh
+printf '%s\n' '123121321' | ./build/paint-waste -s 3
 ```
 
 ```text

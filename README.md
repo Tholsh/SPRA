@@ -4,6 +4,13 @@ The entire purpose of this code is to make enumeration of n=14 and n=15 superper
 
 This code / corpus repo was meant to be imported as a submodule and used in personal repos.
 
+## WSL / Linux workflow
+
+All commands run in Linux Bash, including on Windows through Ubuntu WSL 2.
+Use Linux-installed GCC and utilities. See [setup and validation](docs/tools.md#wsl--linux-setup)
+for dependencies and VS Code configuration. From the repository root, run
+`make -j2` to build every program and `make test` to run the regression suites.
+
 ## Corpus
 
 [`words/`](words/) groups words by alphabet size, from `5` through `14`, then by word length: `words/N/LENGTH/`. For example, the recursive N=5 word is [`words/5/153/153-recursive.txt`](words/5/153/153-recursive.txt). Through **N=9**, every `.txt` file contains exactly one superpermutation, using one-based labels `123…N`. This is also where Collections retain their own folders inside the length folder, such as `words/6/872/872-treelike/872-00001.txt` (length and source ordinal). Existing individual word filenames are retained. Repeated occurrences from different sources are preserved.
@@ -30,16 +37,6 @@ bash tools/spra-xz.sh encode 5 words/5/153/153-recursive.txt -- -6e > word-n5.sp
 bash tools/spra-xz.sh decode word-n5.spra.xz > restored-n5.txt
 ```
 
-In PowerShell, build with MinGW GCC (see docs/spra.md) and use `cmd /c` for binary-safe redirection:
-
-```powershell
-New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
-cmd /c '.\build\reduced_codec.exe encode 5 words\5\153\153-recursive.txt > word-n5.spra'
-cmd /c '.\build\reduced_codec.exe encode --bits 6 5 words\5\153\153-recursive.txt > word-n5-six.spra'
-cmd /c '.\build\reduced_codec.exe decode word-n5.spra > restored-n5.txt'
-```
-
 Check the exit status before keeping output; errors go to stderr. See the [binary format and run guide](docs/spra.md) for stdin and xz pipelines, zero-based labels, the complete header and decoding rules, representability limits, and regression checks. The painted-word tool displays the same logical tuple values.
 
 The optional [byte-pair layer](docs/bpe_streaming.md), based on Halfar's PR #2,
@@ -53,19 +50,11 @@ SPRA itself is unchanged; see [measurements](docs/bpe-stream-benchmark.md).
 
 [`tools/relabel_words.cpp`](tools/relabel_words.cpp) converts between zero-based `0123456789ABC` and one-based `123456789ABCD` labels. Build it with `g++ -std=c++20 -O2 tools/relabel_words.cpp -o build/relabel-words` (create `build/` first). See [tools and regression checks](docs/tools.md) for all build commands and dependencies. `--to 0` expects one-based input; `--to 1` expects zero-based input. Each uppercase letter is one symbol (`9` becomes `A` when converting to one-based labels). Whitespace, line endings, word length, and filenames are preserved. Optionally use `-n N` to validate the source alphabet size; the default is 13. Only word symbols and ASCII whitespace are accepted.
 
-```powershell
-# A single file, in either direction; write to a different output file.
+```sh
+# A single file; write to a different output file.
 ./build/relabel-words --to 0 -n 3 one-based.txt zero-based.txt
 ./build/relabel-words --to 1 -n 3 zero-based.txt restored.txt
-# Convert every .txt file recursively, retaining relative subdirectories.
-./tools/relabel-folder.ps1 -To 0 -N 5 -Source words/5 -Destination converted-zero -DryRun
-./tools/relabel-folder.ps1 -To 0 -N 5 -Source words/5 -Destination converted-zero
-./tools/relabel-folder.ps1 -To 1 -N 5 -Source converted-zero -Destination converted-one
-```
-
-For Bash (Linux, macOS, WSL, or MSYS2):
-
-```sh
+# Convert every .txt file recursively.
 bash tools/relabel-folder.sh --to 0 -n 5 --dry-run words/5 converted-zero
 bash tools/relabel-folder.sh --to 0 -n 5 words/5 converted-zero
 bash tools/relabel-folder.sh --to 1 -n 5 converted-zero converted-one
@@ -73,7 +62,7 @@ bash tools/relabel-folder.sh --to 1 -n 5 converted-zero converted-one
 xz -dc zero-based-n11.txt.xz | ./build/relabel-words --to 1 -n 11 > one-based-n11.txt
 ```
 
-For example, `123121321` becomes `012010210` and converts back exactly. Folder conversion processes plain `.txt` files only, skips symlinks, and requires separate, non-nested input/output folders. Extract compressed archives first. `--dry-run` lists planned conversions without checking word contents. Existing outputs are refused unless you pass `--overwrite` (PowerShell: `-Overwrite`). File outputs are published only after complete validation; a failed file leaves no partial output. A folder run stops at the first error, retaining already completed files. Stream output can contain a valid prefix before an input error, so check the exit status. Run `./build/relabel-words --help` for all options; PowerShell accepts `-Tool PATH`, and Bash accepts a `RELABEL_TOOL` environment override.
+For example, `123121321` becomes `012010210` and converts back exactly. Folder conversion processes plain `.txt` files only, skips symlinks, and requires separate, non-nested input/output folders. Extract compressed archives first. `--dry-run` lists planned conversions without checking word contents. Existing outputs are refused unless you pass `--overwrite`. File outputs are published only after complete validation; a failed file leaves no partial output. A folder run stops at the first error, retaining already completed files. Stream output can contain a valid prefix before an input error, so check the exit status. Run `./build/relabel-words --help` for all options; Use `RELABEL_TOOL` to override the executable.
 
 ## Paint waste
 
@@ -81,17 +70,18 @@ For example, `123121321` becomes `012010210` and converts back exactly. Folder c
 
 For each length-`N` window, it marks the final character red if the window contains repeated symbols. It prints the colored word, reduced-alphabet `[depth:offset]` pairs (in decimal, with signed offsets), and then decimal statistics to stdout. Statistics include length, clean/dirty windows and runs, distinct/missing permutations, and binary `valid_superpermutation` coverage. Use `-s` to print only statistics. See the [full run guide and field definitions](docs/paint_waste.md).
 
-Run these commands from the repository root with a C++20 compiler such as GCC. In PowerShell with MinGW GCC:
+Run these commands in WSL/Linux Bash from the repository root:
 
-```powershell
-g++ -std=c++20 -O2 tools/paint_waste.cpp -o paint-waste.exe
-Get-Content words/5/153/153-recursive.txt | ./paint-waste.exe 5
+```sh
+mkdir -p build
+g++ -std=c++20 -O2 tools/paint_waste.cpp -o build/paint-waste
+./build/paint-waste 5 < words/5/153/153-recursive.txt
 ```
 
 A concrete coverage check, showing four fields from the statistics-only output:
 
-```powershell
-'123121321' | ./paint-waste.exe -s 3 | Select-String '^(length|distinct_permutations|missing_permutations|valid_superpermutation):'
+```sh
+printf '%s\n' '123121321' | ./build/paint-waste -s 3 | grep -E '^(length|distinct_permutations|missing_permutations|valid_superpermutation):'
 ```
 
 ```text
@@ -105,8 +95,8 @@ Validity `1` means all `N!` distinct permutations occur. A completed analysis ex
 
 Use `-m` to mark dirty characters as `[X]` instead of using color. The reduced alphabet and statistics keep exactly the same format:
 
-```powershell
-'123121321' | ./paint-waste.exe -m 3
+```sh
+printf '%s\n' '123121321' | ./build/paint-waste -m 3
 # Painted word: 12312[1]321
 ```
 
@@ -114,31 +104,24 @@ Use `-m` to mark dirty characters as `[X]` instead of using color. The reduced a
 
 For the zero-based version of the same valid word:
 
-```powershell
-'012010210' | ./paint-waste.exe -z -s 3
+```sh
+printf '%s\n' '012010210' | ./build/paint-waste -z -s 3
 ```
 
 Above N=9, the tool always uses statistics-only output. Without `-s`, it asks for confirmation through the terminal; explicit `-s` accepts that mode without prompting. If no terminal is available, rerun with `-s`. Large words are streamed; exact coverage at N=13 needs about 742 MiB of RAM. See the [full run guide](docs/paint_waste.md) for alphabet and confirmation details.
-
-On Linux/macOS with GCC:
-
-```sh
-g++ -std=c++20 -O2 tools/paint_waste.cpp -o paint-waste
-./paint-waste 5 < words/5/153/153-recursive.txt
-```
 
 To use an xz word directly through stdin, without extracting it first (POSIX shell):
 
 ```sh
 # Make a compressed N=5 example, then pipe it into the tool.
 xz < words/5/153/153-recursive.txt > word-n5.txt.xz
-xz -d < word-n5.txt.xz | ./paint-waste 5
+xz -d < word-n5.txt.xz | ./build/paint-waste 5
 ```
 
 `-dc` decompresses to stdout and preserves the archive. To validate the current one-based N=11 SPRA archive, decode it before passing the word to paint-waste:
 
 ```sh
-bash tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz | ./paint-waste -s 11
+bash tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz | ./build/paint-waste -s 11
 ```
 # Improvement from V0.1
 

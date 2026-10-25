@@ -28,7 +28,7 @@ bash tools/spra-bpe-xz.sh unpack output.bpe.xz > restored.spra
 bash tools/spra-bpe-xz.sh encode 5 words/5/153/153-recursive.txt > n5.bpe.xz
 ```
 
-On Windows keep binary pipes in MSYS2/Git Bash or `cmd /c`. MinGW adds `.exe`.
+Run commands in WSL/Linux Bash with Linux binaries; see [setup](tools.md#wsl--linux-setup).
 `SPRA_CODEC` and `SPRA_BPE` override the executables. All results go to stdout;
 named inputs are preserved. Use different input/output paths and check exit
 status. Streaming failures can happen after a prefix has been emitted.
@@ -130,11 +130,15 @@ logical-count mismatches fail. xz provides the outer integrity check.
 bash tools/tests/test_bpe_layer.sh
 ```
 
-This includes the imported reference-format checks; 1,201 independent comparisons
-between incremental and offline pair substitution; streaming vectors and every
-truncation; dictionary-full escapes and inline definitions; large split runs;
-corpus round trips; raw-word hashes; preserved limits/strict mode; and live
-input tests on Windows. No Python or recipe sources are required.
+Run this Bash test suite in WSL/Linux. It compiles and runs the C++ reference
+and streaming checks, then exercises the shell wrappers for corpus round trips,
+raw-word hashes, and decoding limits/strict mode. The C++ checks include 1,201
+comparisons between incremental and offline pair substitution, streaming vectors
+and truncation cases, dictionary-full escapes, inline definitions, and large
+split runs. The runner also invokes `test_bpe_live.sh`, which uses Bash pipes
+and a FIFO to check that payload output arrives before input EOF, with timeouts
+for stalled pipelines and byte-exact round-trip comparisons. No Python or recipe
+sources are required.
 
 The [streaming benchmark](bpe-stream-benchmark.md) covers all 36 corpus archives,
 with byte-exact SPRA SHA-256 comparisons after decoding. Whole-file mode can improve compression at the cost of memory and output delay.

@@ -4,8 +4,8 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/spra-relabel-tests.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
-"${CXX:-g++}" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/relabel_words.cpp" -o "$work/relabel.exe"
-tool=$work/relabel.exe
+"${CXX:-g++}" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/relabel_words.cpp" -o "$work/relabel"
+tool=$work/relabel
 printf '0 12\r\n010\t210\v\f' > "$work/source"
 printf '1 23\r\n121\t321\v\f' > "$work/expected"
 "$tool" --to 1 -n 3 "$work/source" "$work/output"
@@ -30,7 +30,7 @@ cmp "$work/expected" "$work/converted/sub/a.TXT"
 [[ ! -e $work/converted/ignored.bin ]]
 if "$tool" --to 1 --recursive "$work/tree" "$work/tree/nested" 2>/dev/null; then exit 1; fi
 # POSIX symlinks are tested where the filesystem supports them.
-if MSYS=winsymlinks:nativestrict ln -s "$work/output" "$work/symlink" 2>/dev/null; then
+if ln -s "$work/output" "$work/symlink" 2>/dev/null; then
     if "$tool" --to 1 --overwrite "$work/source" "$work/symlink" 2>/dev/null; then exit 1; fi
 fi
 [[ -z $(find "$work" -name '.relabel-*' -print -quit) ]]

@@ -60,7 +60,7 @@ else
 fi
 find_tool() {
     local candidate
-    for candidate in "$script_dir/../build/$1"{,.exe} "$script_dir/../$1"{,.exe}; do
+    for candidate in "$script_dir/../build/$1" "$script_dir/../$1"; do
         if [[ -x $candidate ]]; then
             printf '%s\n' "$candidate"
             return

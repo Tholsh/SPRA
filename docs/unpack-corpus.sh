@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Theo H.
 set -euo pipefail
-# A non-login MSYS2/Git Bash launched from PowerShell may omit its coreutils.
-if [[ -d /usr/bin ]]; then export PATH="/usr/bin:${PATH:-}"; fi
 
 usage() {
     printf '%s\n' 'usage: bash docs/unpack-corpus.sh [all|N] [OUTPUT_DIRECTORY]

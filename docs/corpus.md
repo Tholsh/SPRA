@@ -68,6 +68,7 @@ N=6 sizes, counts, checksums, and verification results.
 
 ## Build the SPRA decoder
 
+Run all examples in WSL/Linux Bash from the repository root.
 The shell scripts need Bash, tar, and xz. SPRA also needs the C++20 decoder.
 From the repository root:
 
@@ -76,15 +77,8 @@ mkdir -p build
 g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec
 ```
 
-With MinGW GCC in PowerShell:
-
-```powershell
-New-Item -ItemType Directory -Force build | Out-Null
-g++ -std=c++20 -O2 tools/reduced_codec.cpp -o build/reduced_codec.exe
-```
-
-MSYS2 or Git Bash supplies the shell tools on Windows. Set `SPRA_CODEC` to use
-a different decoder executable. Only tar and xz are needed for N=6 collections.
+Set `SPRA_CODEC` to use a different Linux decoder executable. Only tar and xz
+are needed for N=6 collections. See [WSL/Linux setup](tools.md#wsl--linux-setup).
 
 ## Unpack a collection or an alphabet
 
@@ -98,10 +92,9 @@ tar -xJf words/6/872/872-treelike.tar.xz -C words/6/872
 The expanded large collection folders are ignored by git. The `1/` and `base/`
 folders remain eligible for version control.
 
-The [Bash script](unpack-corpus.sh) and [PowerShell launcher](unpack-corpus.ps1)
-create a complete working copy of an alphabet, combining expanded archives and
-existing raw words. They preserve all source files and archives, copy existing
-`.txt` files, decompress `.txt.xz` files without relabeling, and decode
+The [Bash script](unpack-corpus.sh) creates a complete working copy of an alphabet, combining expanded archives and
+existing raw words. It preserves all source files and archives, copies existing
+`.txt` files, decompresses `.txt.xz` files without relabeling, and decodes
 `.spra.xz` files through the wrapper. The destination must not exist and must be
 outside the source `words/` tree. Failed runs remove temporary output.
 
@@ -112,12 +105,6 @@ bash docs/unpack-corpus.sh 6 build/unpacked-n6
 # All alphabets; default output is the ignored build/unpacked/ tree.
 bash docs/unpack-corpus.sh
 bash docs/unpack-corpus.sh all build/unpacked-all
-```
-
-```powershell
-./docs/unpack-corpus.ps1 -N 6 -Destination build/unpacked-n6
-./docs/unpack-corpus.ps1
-./docs/unpack-corpus.ps1 -N 9 -Destination build/unpacked-n9 -Bash C:/msys64/usr/bin/bash.exe
 ```
 
 The complete materialized corpus is about 38.9 GB of symbols, plus filesystem
@@ -151,14 +138,6 @@ bash tools/spra-xz.sh decode words/9/408731/superpermutation-9-408731.spra.xz > 
 
 # The wrapper also accepts an archive through stdin.
 cat words/9/408731/superpermutation-9-408731.spra.xz | bash tools/spra-xz.sh decode -
-```
-
-On PowerShell, let Bash handle redirection for the wrapper, or use a native
-binary pipeline through `cmd /c`:
-
-```powershell
-bash -c 'bash tools/spra-xz.sh decode words/9/408731/superpermutation-9-408731.spra.xz > build/raw-n9.txt'
-cmd /c 'xz -dc words\9\408731\superpermutation-9-408731.spra.xz | .\build\reduced_codec.exe decode > build\raw-n9.txt'
 ```
 
 Check the pipeline's exit status before using redirected output. See the

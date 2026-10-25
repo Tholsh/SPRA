@@ -6,12 +6,51 @@ Text files appear beside their archives; existing text files are skipped.
 Optionally supply a new output directory to preserve subfolders elsewhere.
 See the [corpus guide](corpus.md) for supported archives and examples.
 
-The tools require a C++20 compiler and Bash 4 or newer. The benchmark and archive wrappers
-also require xz and standard shell utilities (`sha256sum`, `cmp`, `od`, `head`,
-`tr`, `wc`, `mktemp`). On Windows, run the shell commands in MSYS2 with UCRT64 GCC
-and `/ucrt64/bin:/usr/bin` on PATH. Keep binary pipelines inside Bash.
+## WSL / Linux setup
 
-Build from the repository root:
+Use Ubuntu WSL 2 on Windows and run all builds, programs, pipelines, and tests
+inside Linux Bash. These same commands run on a native Linux machine.
+Open the repository with VS Code's **WSL: Reopen Folder in WSL** command so
+the terminal, compiler, and extensions all run in Ubuntu. The workspace terminal
+profile also selects Ubuntu WSL when opened locally on Windows.
+If you use the optional LuaLaTeX editor recipe, install Linux TeX with
+`sudo apt-get install texlive-luatex`; its command is `lualatex` on PATH.
+
+Install the dependencies inside Ubuntu (once):
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential git bash xz-utils tar coreutils findutils grep util-linux jq
+```
+
+The tools need C++20 and Bash 4+. Tests additionally use jq and `setsid` from
+util-linux. Bash pipes, a FIFO, and `timeout` from coreutils check that streaming
+output arrives before EOF.
+All executables are Linux binaries in the ignored `build/` directory.
+Run commands from the repository root. The existing checkout is available at:
+
+```sh
+cd /mnt/c/Users/Theo/Documents/Programs/SPRA
+git config --local core.autocrlf input
+make -j2
+make test
+```
+
+For an existing Windows checkout, `core.autocrlf=input` makes Git compare CRLF
+working files with their normalized LF index entries correctly. It also keeps
+future checkouts in LF form. This repository-local setting prevents thousands
+of unchanged corpus files from appearing modified when switching to WSL;
+it does not rewrite files or stage anything.
+
+A checkout under `~/src/SPRA` uses Linux filesystem semantics and has faster
+Git and small-file I/O than `/mnt/c`; the commands are otherwise identical.
+Use forward-slash Linux paths and ordinary Bash redirection. For outer pipelines
+run `set -o pipefail` and check the exit status before using the output.
+Compiler and flag overrides work with `make CXX=clang++ CXXFLAGS='-std=c++20 -O2'`;
+use `CXX=clang++ make test` to select a compiler for the test runners as well.
+
+`make` builds the four main tools and the three independent verification programs
+in `tools/verification/`. Equivalent main-tool build commands are:
 
 ```sh
 mkdir -p build
@@ -21,7 +60,7 @@ g++ -std=c++20 -O2 -Wall -Wextra tools/paint_waste.cpp -o build/paint-waste
 g++ -std=c++20 -O2 -Wall -Wextra tools/bpe_layer.cpp -o build/spra-bpe
 ```
 
-MinGW adds `.exe`. Build outputs belong in the ignored `build/` directory.
+Build outputs belong in the ignored `build/` directory.
 
 ## Relabel words
 
@@ -43,8 +82,7 @@ outputs are refused. Streams may emit a prefix before an error; check status.
 skips symlinks and processes only `.txt` files (case insensitive). `--dry-run`
 lists the plan without reading word contents or creating outputs. A failed
 folder conversion retains files already completed. Bash's folder launcher uses
-`RELABEL_TOOL` to override the executable. PowerShell's launcher accepts
-`-Tool PATH`, `-To`, `-N`, `-Source`, `-Destination`, `-DryRun` and `-Overwrite`.
+`RELABEL_TOOL` to override the executable.
 
 ## Benchmark SPRA and xz
 
@@ -72,6 +110,8 @@ when measurement is unnecessary.
 
 ## Regression checks
 
+`make test` runs the literal verifier's self-test and all four suites below.
+
 ```sh
 bash tools/tests/test_reduced_codec.sh
 bash tools/tests/test_reduced_alphabet.sh
@@ -89,13 +129,12 @@ passes; split markers, repeated literals, far copies and needless six-bit
 fields are refused). Shell
 checks cover CLI errors, paths with spaces, xz failures, N=5..9 corpus samples,
 benchmark options/baselines and compressed prefixes, and the wrapper's
-default xz settings. JSON checks use PowerShell
-on Windows or `jq` elsewhere.
+default xz settings. JSON checks use `jq`.
 
 Paint tests compare statistics against an independent C++ window-set oracle
 for both alphabets, test large alphabets, brackets, whitespace, long clean runs,
 buffer boundaries and invalid input, verify the N=5 corpus example, and check
-consent refusal in a detached process (the Windows process API or `setsid`).
+consent refusal in a detached Linux process using `setsid`.
 Relabel checks cover exact whitespace, file and stream conversion, safe output
 publication, overwrite failures, hardlinks, nested-tree refusal and dry runs.
 Native symlink checks run when the host permits creating symlinks.

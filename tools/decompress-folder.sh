@@ -40,7 +40,7 @@ fi
 find_tool() {
     local name candidate
     for name in "$@"; do
-        for candidate in "$script_dir/../build/$name"{,.exe} "$script_dir/../$name"{,.exe}; do
+        for candidate in "$script_dir/../build/$name" "$script_dir/../$name"; do
             if [[ -x $candidate ]]; then printf '%s\n' "$candidate"; return; fi
         done
     done

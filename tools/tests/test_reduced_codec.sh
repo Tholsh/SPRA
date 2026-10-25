@@ -6,10 +6,10 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/spra-codec-tests.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 compiler=${CXX:-g++}
-"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/tests/test_reduced_codec.cpp" -o "$work/vectors.exe"
-"$work/vectors.exe"
-"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/reduced_codec.cpp" -o "$work/codec with spaces.exe"
-export SPRA_CODEC="$work/codec with spaces.exe"
+"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/tests/test_reduced_codec.cpp" -o "$work/vectors"
+"$work/vectors"
+"$compiler" -std=c++20 -O2 -Wall -Wextra -pedantic "$root/tools/reduced_codec.cpp" -o "$work/codec with spaces"
+export SPRA_CODEC="$work/codec with spaces"
 wrapper=$root/tools/spra-xz.sh
 printf '1 1111\n' > "$work/input word.txt"
 printf 11111 > "$work/expected"
@@ -138,13 +138,7 @@ for n in 5 6 7 8 9; do
     done
 done
 bash "$root/tools/benchmark_reduced_codec.sh" 3 "$work/input word.txt" --codec "$SPRA_CODEC" --baseline-codec "$SPRA_CODEC" --xz-arg=-6e > "$work/report.json"
-# PowerShell's JSON parser checks the actual report on Windows; jq elsewhere.
-if command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
-    export SPRA_TEST_REPORT=$(cygpath -w "$work/report.json")
-    powershell.exe -NoProfile -Command '$ErrorActionPreference="Stop"; $r=Get-Content -Raw $env:SPRA_TEST_REPORT|ConvertFrom-Json; if (($r.layouts|ConvertTo-Json -Compress) -ne ($r.baseline_layouts|ConvertTo-Json -Compress)) {exit 1}; foreach($l in $r.layouts){if($l.logical_tuples -ne 3 -or $l.stored_tokens -ne 2 -or !$l.round_trip_sha256_matches){exit 1}}'
-elif command -v jq >/dev/null 2>&1; then
-    jq -e '.layouts == .baseline_layouts and (.layouts | all(.logical_tuples == 3 and .stored_tokens == 2 and .round_trip_sha256_matches))' "$work/report.json" > /dev/null
-else echo 'Install jq to validate benchmark JSON' >&2; exit 1; fi
+jq -e '.layouts == .baseline_layouts and (.layouts | all(.logical_tuples == 3 and .stored_tokens == 2 and .round_trip_sha256_matches))' "$work/report.json" > /dev/null
 xz -c "$work/input word.txt" > "$work/input.xz"
 bash "$root/tools/benchmark_reduced_codec.sh" --prefix-bytes 3 3 "$work/input.xz" --codec "$SPRA_CODEC" --bits 6 > "$work/prefix.json"
 grep -q '"word_bytes":2' "$work/prefix.json"
