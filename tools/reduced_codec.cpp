@@ -34,7 +34,8 @@ constexpr std::string_view ONE_BASED = "123456789ABCDEFGHIJKLMNOPQRSTUVW";
 constexpr std::string_view ZERO_BASED = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
 static_assert(ONE_BASED.size() == MAX_N && ZERO_BASED.size() == MAX_N);
 constexpr const char* USAGE =
-    "usage: reduced-codec encode [--bits 4|6] [-z|--zero-based] N [INPUT|-]\n"
+    "usage: reduced-codec encode [--bits 4|6] [--length COUNT] [--tuples COUNT] [-z|--zero-based] N [INPUT|-]\n"
+    "       reduced-codec measure [--bits 4|6] [-z|--zero-based] N [INPUT|-]\n"
     "       reduced-codec decode [--strict] [--max-symbols COUNT] [INPUT|-]\n"
     "  N: 1..32; omitted INPUT or '-' reads stdin.\n"
     "  --max-symbols: refuse a header length above COUNT (default N * N!).\n"
@@ -44,6 +45,9 @@ constexpr const char* USAGE =
     "  encode writes SPRA 0.2 with tuple RLE; decode also reads 0.1 files.\n"
     "  decode detects the layout from the header.\n"
     "  encode writes binary to stdout; decode writes symbols without a newline.\n"
+    "  measure prints length, logical tuple count and field width, without storing tuples.\n"
+    "  --length with --tuples and --bits writes the header before streaming the body.\n"
+    "  Supplied counts are retained; mismatches at EOF warn on stderr (exit status 0).\n"
     "  Errors go to stderr. Redirect stdout to save the result.\n";
 
 [[noreturn]] void fail(const std::string& message) {
@@ -287,19 +291,31 @@ std::string distance_misfit(Layout layout, unsigned n, Count distance, const std
            "-bit range " + std::to_string(minimum_distance) + ".." + std::to_string(maximum_distance) + location;
 }
 
-// Without a requested layout, tuples are spooled with six-bit fields, which
-// hold every four-bit tuple. If all tuples fit four bits, the spool is
-// re-packed with four-bit fields (the same bytes --bits 4 writes); otherwise
-// the six-bit body is kept and the returned note says why.
-std::string encode(std::FILE* source, unsigned n, bool zero_based, std::optional<Layout> requested = std::nullopt) {
+// Complete supplied metadata permits header-first streaming. Measurement uses
+// only word state and counters. Calls without metadata retain automatic layout
+// selection by spooling six-bit tuples and repacking when four bits fit.
+struct Measurements { Count length = 0, tuples = 0; unsigned bits = 4; };
+
+std::string encode(std::FILE* source, unsigned n, bool zero_based, std::optional<Layout> requested = std::nullopt,
+                   std::optional<Count> expected_length = std::nullopt,
+                   std::optional<Count> expected_tuples = std::nullopt, Measurements* measured = nullptr) {
     const Layout spool_layout = requested ? *requested : Layout(6);
     const Layout four(4);
     bool fits_four = true;
     std::string four_error;
-    File spool(std::tmpfile());
-    if (!spool) fail("cannot create temporary tuple file");
-    binary_mode(spool.get());
-    Writer body(spool.get());
+    const bool streaming = expected_length && expected_tuples && requested;
+    File spool;
+    if (!streaming && !measured) {
+        spool.reset(std::tmpfile());
+        if (!spool) fail("cannot create temporary tuple file");
+        binary_mode(spool.get());
+    }
+    Writer body(streaming ? stdout : spool.get());
+    if (streaming) {
+        body.bytes(MAGIC.data(), MAGIC.size()); body.put(VERSION); body.put(spool_layout.id());
+        body.put(zero_based ? 1 : 0); body.put(static_cast<Byte>(n));
+        body.little_u64(*expected_length); body.little_u64(*expected_tuples);
+    }
     RleTupleWriter tuples(body, spool_layout);
     Reader input(source);
     WordState state(n);
@@ -317,6 +333,7 @@ std::string encode(std::FILE* source, unsigned n, bool zero_based, std::optional
         state.append(symbol);
         if (state.length < n) {
             seed.push_back(symbol);
+            if (streaming) body.put(symbol);
             continue;
         }
         if (state.clean()) {
@@ -335,23 +352,35 @@ std::string encode(std::FILE* source, unsigned n, bool zero_based, std::optional
             fits_four = four_error.empty();
         }
         const int offset = static_cast<int>(n) - static_cast<int>(distance);
-        tuples.put(static_cast<unsigned>(clean_run), offset);
+        if (!measured) tuples.put(static_cast<unsigned>(clean_run), offset);
         ++tuple_count;
         clean_run = 0;
     }
-    tuples.finish();
-    body.finish();
+    const Layout layout = requested || !fits_four ? spool_layout : four;
+    const auto note = requested || fits_four ? std::string{} :
+        "four-bit fields cannot encode this word (" + four_error + "); wrote six-bit fields";
+    if (measured) {
+        *measured = {state.length, tuple_count, layout.bits};
+        return note;
+    }
+    tuples.finish(); body.finish();
+    if (expected_length && *expected_length != state.length)
+        std::fprintf(stderr, "reduced-codec: warning: length mismatch: header %llu, actual %llu\n",
+                     static_cast<unsigned long long>(*expected_length), static_cast<unsigned long long>(state.length));
+    if (expected_tuples && *expected_tuples != tuple_count)
+        std::fprintf(stderr, "reduced-codec: warning: tuple count mismatch: header %llu, actual %llu\n",
+                     static_cast<unsigned long long>(*expected_tuples), static_cast<unsigned long long>(tuple_count));
+    if (streaming) return note;
     if (std::fseek(spool.get(), 0, SEEK_SET) != 0) fail("cannot rewind temporary tuple file");
 
     // Publish only after the whole input and all field ranges are validated.
-    const Layout layout = requested || !fits_four ? spool_layout : four;
     Writer output(stdout);
     output.bytes(MAGIC.data(), MAGIC.size());
     output.put(VERSION);
     output.put(layout.id());
     output.put(zero_based ? 1 : 0);
     output.put(static_cast<Byte>(n));
-    output.little_u64(state.length);
+    output.little_u64(expected_length.value_or(state.length));
     output.little_u64(tuple_count);
     output.bytes(seed.data(), seed.size());
     if (layout.bits == spool_layout.bits) {
@@ -483,18 +512,20 @@ void decode(std::FILE* source, std::optional<Count> max_symbols = std::nullopt, 
 }
 
 struct Options {
-    bool encode = false, zero_based = false, explicit_bits = false, strict = false;
+    bool encode = false, measure = false, zero_based = false, explicit_bits = false, strict = false;
     unsigned n = 0, bits = 4;
     std::optional<Count> max_symbols;
+    std::optional<Count> length, tuples;
     std::string input = "-";
 };
 
 Options options(int argc, char** argv) {
     if (argc < 2) fail(USAGE);
     const std::string_view command = argv[1];
-    if (command != "encode" && command != "decode") fail(USAGE);
+    if (command != "encode" && command != "decode" && command != "measure") fail(USAGE);
     Options result;
-    result.encode = command == "encode";
+    result.measure = command == "measure";
+    result.encode = command == "encode" || result.measure;
     bool has_input = false, has_bits = false;
     for (int i = 2; i < argc; ++i) {
         const std::string_view arg = argv[i];
@@ -511,6 +542,19 @@ Options options(int argc, char** argv) {
                 fail("--bits must be 4 or 6");
             (void)Layout(result.bits);
             result.explicit_bits = true;
+        } else if (result.encode && !result.measure && (arg == "--length" || arg.starts_with("--length=")
+                    || arg == "--tuples" || arg.starts_with("--tuples="))) {
+            const bool length = arg == "--length" || arg.starts_with("--length=");
+            auto& target = length ? result.length : result.tuples;
+            const std::string name = length ? "--length" : "--tuples";
+            if (target) fail("duplicate " + name + " option");
+            std::string_view value;
+            if (arg == name) { if (++i == argc) fail(name + " requires a count"); value = argv[i]; }
+            else value = arg.substr(name.size() + 1);
+            Count count = 0;
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), count);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) fail(name + " requires a count");
+            target = count;
         } else if (!result.encode && (arg == "--max-symbols" || arg.starts_with("--max-symbols="))) {
             if (result.max_symbols) fail("duplicate --max-symbols option");
             std::string_view value;
@@ -541,13 +585,14 @@ Options options(int argc, char** argv) {
         }
     }
     if (result.encode && result.n == 0) fail("encode requires N in 1..32");
+    if (result.tuples && (!result.length || !result.explicit_bits)) fail("--tuples requires --length and --bits");
     return result;
 }
 } // namespace
 
 int main(int argc, char** argv) try {
     if ((argc == 2 && (std::string_view(argv[1]) == "--help" || std::string_view(argv[1]) == "-h")) ||
-        (argc == 3 && (std::string_view(argv[1]) == "encode" || std::string_view(argv[1]) == "decode") &&
+        (argc == 3 && (std::string_view(argv[1]) == "encode" || std::string_view(argv[1]) == "decode" || std::string_view(argv[1]) == "measure") &&
          (std::string_view(argv[2]) == "--help" || std::string_view(argv[2]) == "-h"))) {
         if (std::fputs(USAGE, stdout) == EOF || std::fflush(stdout) != 0) fail("output write failed");
         return 0;
@@ -563,8 +608,15 @@ int main(int argc, char** argv) try {
     binary_mode(source);
     binary_mode(stdout);
     if (args.encode) {
+        Measurements measured;
         const auto note =
-            encode(source, args.n, args.zero_based, args.explicit_bits ? std::optional(Layout(args.bits)) : std::nullopt);
+            encode(source, args.n, args.zero_based, args.explicit_bits ? std::optional(Layout(args.bits)) : std::nullopt,
+                   args.length, args.tuples, args.measure ? &measured : nullptr);
+        if (args.measure) {
+            if (std::printf("%llu %llu %u\n", static_cast<unsigned long long>(measured.length),
+                            static_cast<unsigned long long>(measured.tuples), measured.bits) < 0
+                    || std::fflush(stdout) != 0) fail("output write failed");
+        }
         if (!note.empty()) std::fprintf(stderr, "reduced-codec: note: %s\n", note.c_str());
     } else {
         decode(source, args.max_symbols, args.strict);

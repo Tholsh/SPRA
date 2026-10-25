@@ -24,7 +24,7 @@ bash tools/spra-bpe-xz.sh pack --whole-file input.spra.xz > output.bpe.xz
 # Recover the original canonical SPRA bytes instead of the word.
 bash tools/spra-bpe-xz.sh unpack output.bpe.xz > restored.spra
 
-# Encode a new word. The original SPRA encoder still performs its initial spool.
+# Encode a new word. The wrapper measures its header fields first.
 bash tools/spra-bpe-xz.sh encode 5 words/5/153/153-recursive.txt > n5.bpe.xz
 ```
 
@@ -76,11 +76,16 @@ symbols incrementally. Tests withhold input EOF and require at least 4,096
 output bytes, beyond the maximum metadata-only prefix, before completing input.
 Stages run concurrently with pipe backpressure.
 
-**The original word-to-SPRA encoder is unchanged.** It still spools its packed
-body to determine header counts and automatic field width. Thus `pack` streams
-the whole existing-archive conversion, and `decode` streams all the way to raw
-symbols; `encode` of a new word retains that initial SPRA delay. SPRA's tail
-reconstruction, strict mode and Halfar's decode limits are preserved.
+For a new word, the wrapper first measures symbol length, logical tuple count
+and field width without storing tuples. It supplies these to SPRA so the
+header is written immediately and the packed body streams into BPE and xz.
+This removes the compressed-body spool, but still requires an initial input
+scan. Stdin is copied temporarily unless `--length`, `--tuples` and `--bits`
+are supplied; those options skip measurement and enable a single pass.
+Mismatches warn on stderr at EOF without changing the supplied header or exit
+status. See [encoding details](reduced_binary.md). `pack` and raw-word decoding
+continue to stream. SPRA's tail reconstruction, strict mode and Halfar's
+decode limits are preserved.
 
 ## SPBE wire format
 

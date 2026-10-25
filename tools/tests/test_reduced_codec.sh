@@ -13,6 +13,27 @@ export SPRA_CODEC="$work/codec with spaces.exe"
 wrapper=$root/tools/spra-xz.sh
 printf '1 1111\n' > "$work/input word.txt"
 printf 11111 > "$work/expected"
+[[ $("$SPRA_CODEC" measure 3 "$work/input word.txt") == '5 3 4' ]]
+[[ $(printf '' | "$SPRA_CODEC" measure 3 -) == '0 0 4' ]]
+for bits in 4 6; do
+    "$SPRA_CODEC" encode --bits "$bits" 3 "$work/input word.txt" > "$work/reference.spra"
+    "$SPRA_CODEC" encode --length 5 --tuples 3 --bits "$bits" 3 "$work/input word.txt" > "$work/stream.spra"
+    cmp "$work/reference.spra" "$work/stream.spra"
+    bash "$wrapper" encode-raw --bits "$bits" 3 "$work/input word.txt" > "$work/prepass.spra"
+    cmp "$work/reference.spra" "$work/prepass.spra"
+    cat "$work/input word.txt" | bash "$wrapper" encode-raw --length 5 --tuples 3 --bits "$bits" 3 - > "$work/stdin.spra"
+    cmp "$work/reference.spra" "$work/stdin.spra"
+done
+# Supplied length is retained, mismatches warn, and encoding consumes all input.
+"$SPRA_CODEC" encode --length 6 --tuples 3 --bits 4 3 "$work/input word.txt" > "$work/mismatch.spra" 2> "$work/error"
+grep -q 'warning: length mismatch: header 6, actual 5' "$work/error"
+[[ $(od -An -tu1 -j8 -N1 "$work/mismatch.spra" | tr -d ' ') == 6 ]]
+"$SPRA_CODEC" encode --length 5 --tuples 2 --bits 4 3 "$work/input word.txt" > "$work/mismatch.spra" 2> "$work/error"
+grep -q 'warning: tuple count mismatch: header 2, actual 3' "$work/error"
+[[ $(od -An -tu1 -j16 -N1 "$work/mismatch.spra" | tr -d ' ') == 2 ]]
+for args in 'encode --length x 3' 'encode --length 5 --length 5 3' 'encode --tuples 3 3' 'encode --length 5 --tuples 3 3' 'measure --length 5 3'; do
+    if "$SPRA_CODEC" $args < /dev/null > /dev/null 2>&1; then echo "invalid metadata accepted: $args" >&2; exit 1; fi
+done
 for bits in 4 6; do
     bash "$wrapper" encode --bits "$bits" 3 "$work/input word.txt" -- -6e --check=crc32 > "$work/packed word.xz"
     bash "$wrapper" decode "$work/packed word.xz" -- --memlimit-decompress=64MiB > "$work/restored"
@@ -35,6 +56,7 @@ bash "$wrapper" encode 3 "$work/input word.txt" -- -6e > "$work/explicit.xz"
 "$SPRA_CODEC" encode 3 "$work/input word.txt" | xz -c -6e | cmp - "$work/explicit.xz"
 # Without --bits, a word that four-bit fields cannot hold gets six-bit fields and a note.
 printf '12111111111112' > "$work/six.txt"
+[[ $("$SPRA_CODEC" measure 3 "$work/six.txt" 2>/dev/null) == '14 12 6' ]]
 "$SPRA_CODEC" encode 3 "$work/six.txt" > "$work/auto.spra" 2> "$work/error"
 "$SPRA_CODEC" encode --bits 6 3 "$work/six.txt" > "$work/six.spra"
 cmp "$work/auto.spra" "$work/six.spra"

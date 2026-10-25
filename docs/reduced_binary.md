@@ -436,12 +436,35 @@ Header counts and word positions remain unsigned 64-bit. Although N=32 is a
 supported alphabet, complete N=21..32 superpermutations exceed the length field:
 even 21! is greater than `2^64-1`. This version does not widen those counters.
 
-The encoder checks all input before publishing bytes, spooling the RLE body to a
-temporary file to determine header counts. Memory is fixed buffers plus O(N)
-state. Temporary disk use is the packed **physical** body; without `--bits` the
-spool uses six-bit fields and is re-packed when four bits fit, so it can be
-up to 1.5 times the final body. Decode streams without
-spooling the word. SPRA itself has no checksum; xz supplies its outer integrity
+The shell wrappers first run `reduced-codec measure`, which scans the word and
+prints its symbol length, logical tuple count and required field width without
+storing tuples. Whitespace is excluded from the length. They then pass
+`--length COUNT --tuples COUNT --bits 4|6` to encode. The encoder immediately
+writes the supplied header and streams the seed and packed RLE body. Memory
+is fixed buffers plus O(N) state; no compressed-body temporary file is used.
+The first pass still reads the whole input before encoding starts.
+
+At EOF the encoder compares the actual counts with the supplied counts and
+prints mismatch warnings to stderr, retaining the supplied header and exit
+status 0. It consumes all input regardless of the supplied counts. A mismatch
+can leave an archive that fails decoding or reconstructs a different tail;
+the warning does not repair the supplied metadata. Ordinary alphabet, range
+and I/O errors still fail.
+
+For an input file the wrappers reopen it for the second pass. For stdin they
+save a temporary raw input copy so it can be read twice. Supplying all three
+metadata options skips that pass and allows stdin to stream directly:
+
+```sh
+build/reduced-codec measure 5 word.txt
+bash tools/spra-xz.sh encode-raw --length LENGTH --tuples TUPLES --bits 4 5 word.txt > word.spra
+bash tools/spra-xz.sh encode --length LENGTH --tuples TUPLES --bits 4 5 - < word.txt > word.spra.xz
+```
+
+Direct codec calls without complete metadata retain the existing compressed
+body spool and automatic width selection. `--length` alone sets the length in
+that header and enables the same EOF warning. Decode streams without spooling
+the word. SPRA itself has no checksum; xz supplies its outer integrity
 check. Structural validity and archive integrity do not establish permutation
 coverage.
 
