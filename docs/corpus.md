@@ -1,5 +1,21 @@
 # Corpus archives: unpack or stream
 
+To decompress any folder recursively into text files, preserving its subfolders:
+
+```sh
+# Write .txt files beside the archives throughout words/9.
+bash tools/decompress-folder.sh words/9
+
+# Optional: write to a separate new directory instead.
+bash tools/decompress-folder.sh words/9 build/decoded-n9
+```
+
+With no output argument, existing text files are skipped and archives stay in
+place. A separate output directory must be new and outside the source folder. The script
+decodes SPRA and BPE files, decompresses `.txt.xz` and collection `.tar.xz`
+archives, and copies existing `.txt` files. Sources are preserved. Completed
+files remain if a later archive fails; incomplete decoded files are removed.
+
 Halfar's N=14 construction is stored at
 `words/14/93904804425/superpermutation-14-93904804425-halfar.spra.xz`.
 Its 93,904,804,425 symbols occupy **9,679,980 bytes** with six-bit SPRA and

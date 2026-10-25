@@ -1,4 +1,10 @@
-# Tools 
+# Tools
+
+To decompress a folder recursively into `.txt` files, run
+`bash tools/decompress-folder.sh SOURCE_DIRECTORY`.
+Text files appear beside their archives; existing text files are skipped.
+Optionally supply a new output directory to preserve subfolders elsewhere.
+See the [corpus guide](corpus.md) for supported archives and examples.
 
 The tools require a C++20 compiler and Bash 4 or newer. The benchmark and archive wrappers
 also require xz and standard shell utilities (`sha256sum`, `cmp`, `od`, `head`,
