@@ -67,7 +67,13 @@ int main(int argc,char** argv) try {
     for(auto [word,painted,n,zero]:std::vector<std::tuple<std::string,std::string,unsigned,bool>>{{"123121321","12312[1]321",3,false},{"012010210","01201[0]210",3,true},{"1111","11[1][1]",3,false},{"123","123",3,false},{"","",3,false}}){
         std::vector<std::string> args={std::to_string(n)};if(zero)args.push_back("-z");auto normal=run(word,args);args.push_back("-m");auto bracket=run(word,args);check(bracket.status==0&&bracket.err.empty()&&bracket.out.substr(0,bracket.out.find('\n'))==painted&&bracket.out.find('\033')==std::string::npos,"bracket painting");check(bracket.out.substr(bracket.out.find('\n'))==normal.out.substr(normal.out.find('\n')),"paint statistics agreement");args.push_back("-s");auto short_mode=run(word,args);check(bracket.out.substr(bracket.out.find("statistics:\n")+12)==short_mode.out,"short statistics agreement");
     }
-    for(auto args:std::vector<std::vector<std::string>>{{},{"0"},{"14"},{"3foo"},{"3","--unknown"},{"-s","-s","3"},{"-z","--zero-based","3"},{"-m","-m","3"},{"--bits","3"},{"--bits=5","3"},{"--bits=4","--bits=6","3"}})check(run("123",args).status!=0,"invalid arguments");
+    for(unsigned n=2;n<=9;++n) {
+        std::string alphabet="123456789"; alphabet.resize(n);
+        std::string word;
+        for(int i=0;i<20;++i) { std::shuffle(alphabet.begin(),alphabet.end(),random); word+=alphabet+alphabet+alphabet; word+='1'; }
+        oracle(word,n); // rotations, duplicate classes, and dirty/clean seams
+    }
+    for(auto args:std::vector<std::vector<std::string>>{{},{"0"},{"15"},{"3foo"},{"3","--unknown"},{"-s","-s","3"},{"-z","--zero-based","3"},{"-m","-m","3"},{"--bits","3"},{"--bits=5","3"},{"--bits=4","--bits=6","3"}})check(run("123",args).status!=0,"invalid arguments");
     for(auto word:{"124","120","12x"}){auto r=run(word,{"-m","3"});check(r.status!=0&&r.out.empty()&&!r.err.empty(),"invalid input");}
     check(run("",{"--help"}).status==0,"help");
     std::cout<<"Paint: "<<checks<<" checks passed\n";return 0;

@@ -25,7 +25,7 @@
 #endif
 
 using Symbol = uint8_t;
-constexpr std::size_t MAX_N = 13;
+constexpr std::size_t MAX_N = 14;
 constexpr const char* RED = "\033[31m";
 constexpr const char* RESET = "\033[0m";
 constexpr const char* USAGE = "usage: paint-waste [-s] [-m] [-z|--zero-based] N < WORD\n";
@@ -106,9 +106,9 @@ int main(int argc, char** argv) try {
             std::cout << USAGE
                       << "  -s  statistics only (required above N=9)\n"
                          "  -m  mark each dirty character as [X] instead of using ANSI color\n"
-                         "  -z, --zero-based  use 0123456789ABC instead of 123456789ABCD\n"
+                         "  -z, --zero-based  use 0123456789ABCD instead of 123456789ABCDE\n"
                          "  Tuple fields are eight bits; offsets print as signed decimal numbers.\n"
-                         "  N must be between 1 and 13; uppercase letters are symbols 10 onward.\n";
+                         "  N must be between 1 and 14; uppercase letters are symbols 10 onward.\n";
             return 0;
         }
         if (argument == "-s" && !short_output) {
@@ -141,7 +141,7 @@ int main(int argc, char** argv) try {
         }
         short_output = true;
     }
-    const std::string_view alphabet = zero_based ? "0123456789ABC" : "123456789ABCD";
+    const std::string_view alphabet = zero_based ? "0123456789ABCD" : "123456789ABCDE";
     std::array<std::size_t, MAX_N + 1> factorial{};
     factorial[0] = 1;
     for (std::size_t i = 1; i <= n; ++i) factorial[i] = factorial[i - 1] * i;
@@ -155,7 +155,8 @@ int main(int argc, char** argv) try {
     std::vector<std::size_t> waste_depths;
     std::array<std::size_t, MAX_N> last_seen{};
     std::array<Symbol, 2 * MAX_N> history{};
-    std::size_t history_size = 0, length = 0, dirty_count = 0, distinct = 0;
+    std::size_t history_position = 0, suffix = 0, length = 0, dirty_count = 0, distinct = 0;
+    std::size_t cycle_rank = 0, zero_position = 0;
     std::size_t dirty_run = 0, clean_run = 0, max_dirty_run = 0, max_clean_run = 0;
     std::size_t dirty_runs = 0, clean_runs = 0;
 
@@ -184,14 +185,15 @@ int main(int argc, char** argv) try {
                 symbols.push_back(symbol);
                 dirty_at.push_back(false);
             }
-            if (history_size == 2 * n) {
-                std::move(history.begin() + 1, history.begin() + history_size, history.begin());
-                --history_size;
-            }
-            history[history_size++] = symbol;
+            // A doubled ring keeps the latest window contiguous without moving
+            // O(N) history bytes for every symbol. The distinct suffix detects
+            // dirty windows using only the previous occurrence of this symbol.
+            suffix = std::min({n, suffix + 1, previous ? length - previous : length});
+            history[history_position] = history[history_position + n] = symbol;
+            if (++history_position == n) history_position = 0;
             if (length < n) continue;
-            const std::span<const Symbol> window{history.data() + history_size - n, n};
-            if (is_dirty(window)) {
+            const std::span<const Symbol> window{history.data() + history_position, n};
+            if (suffix < n) {
                 ++dirty_count;
                 if (dirty_run == 0) ++dirty_runs;
                 ++dirty_run;
@@ -205,10 +207,29 @@ int main(int argc, char** argv) try {
                 clean_run = 0;
             } else {
                 dirty_run = 0;
-                if (clean_run == 0) ++clean_runs;
+                if (clean_run == 0) {
+                    ++clean_runs;
+                    // Rank the rotation class once per clean run: rotate zero
+                    // to the front and Lehmer-rank the remaining N-1 symbols.
+                    // Subsequent clean windows only rotate, so changing the
+                    // position of zero updates their exact index in O(1).
+                    zero_position = 0;
+                    while (window[zero_position] != 0) ++zero_position;
+                    unsigned unused = ((1u << n) - 1) & ~1u;
+                    cycle_rank = 0;
+                    std::size_t position = zero_position;
+                    for (std::size_t j = 1; j < n; ++j) {
+                        if (++position == n) position = 0;
+                        unsigned bit = 1u << window[position];
+                        cycle_rank += std::popcount(unused & (bit - 1)) * factorial[n - j - 1];
+                        unused ^= bit;
+                    }
+                } else {
+                    zero_position = zero_position ? zero_position - 1 : n - 1;
+                }
                 ++clean_run;
                 max_clean_run = std::max(max_clean_run, clean_run);
-                const auto rank = permutation_rank(window, factorial);
+                const auto rank = cycle_rank * n + zero_position;
                 if (!covered[rank]) {
                     covered[rank] = true;
                     ++distinct;

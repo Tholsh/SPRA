@@ -1,5 +1,10 @@
 # Corpus archives: unpack or stream
 
+An experimental [tuple recipe layer](../recipes/README.md) includes Halfar's
+N=14 word. Its wrapper emits SPRA directly into the existing streaming decoder;
+the recipes and their tooling live in `recipes/`. See its benchmark report for
+storage, memory, runtime, and validation limits.
+
 To decompress any folder recursively into text files, preserving its subfolders:
 
 ```sh

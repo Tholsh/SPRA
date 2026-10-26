@@ -2,7 +2,7 @@
 
 For binary compression and decompression, use the separate [SPRA 0.2 codec and xz wrapper](spra.md). The codec always run-length encodes logical tuples before packing. Select four- or six-bit tuple fields with `--bits 4|6`; the signed offsets are relative to N and match the logical tuples printed by this tool.
 
-`tools/paint_waste.cpp` reads one word from stdin, with `1 <= N <= 13`, on a 64-bit platform. By default its alphabet is the first N characters of `123456789ABCD`. Use `-z` or `--zero-based` for the first N characters of `0123456789ABC`. Each character is one symbol; letters are uppercase. For example, zero-based N=11 uses `0123456789A`, not decimal numbers separated by spaces. Whitespace is ignored. Multiple lines are concatenated into a single word; a collection of separate words must be checked one word at a time. Four large N=6 collections use tar+xz; N>=9 uses one-based SPRA plus xz. The N=6 `1/` and `base/` examples remain uncompressed. See the [unpacking and streaming guide](corpus.md). See the [corpus layout](../README.md#corpus).
+`tools/paint_waste.cpp` reads one word from stdin, with `1 <= N <= 14`, on a 64-bit platform. By default its alphabet is the first N characters of `123456789ABCDE`. Use `-z` or `--zero-based` for the first N characters of `0123456789ABCD`. Each character is one symbol; letters are uppercase. For example, zero-based N=11 uses `0123456789A`, not decimal numbers separated by spaces. Whitespace is ignored. Multiple lines are concatenated into a single word; a collection of separate words must be checked one word at a time. Four large N=6 collections use tar+xz; N>=9 uses one-based SPRA plus xz. The N=6 `1/` and `base/` examples remain uncompressed. See the [unpacking and streaming guide](corpus.md). See the [corpus layout](../README.md#corpus).
 
 In WSL/Linux Bash, from the repository root, compile with GCC and C++20
 (see [setup](tools.md#wsl--linux-setup)):
@@ -44,7 +44,7 @@ Both examples still print `[3:1]` in the reduced alphabet and the same text stat
 
 For **N > 9**, output is always statistics-only. Without explicit `-s`, the tool asks `Continue? [y/N]:` through the controlling terminal before reading the word; enter `y` or `yes` to accept. Any other answer cancels with status 1 and no statistics. The answer is read separately from stdin, so piped corpus symbols are never consumed as a reply. When no terminal is available, the tool exits with an instruction to rerun with `-s`. Passing `-s` explicitly accepts statistics-only mode and avoids the prompt, which is suitable for scripts and pipes. `-m` alone does not skip this confirmation. Prompts and errors go to stderr.
 
-Statistics-only mode streams the word instead of retaining it. Exact coverage uses one bit per required permutation: roughly 4.8 MiB at N=11, 57.1 MiB at N=12, and 742.3 MiB at N=13, plus small input buffers. Allocation or input failures exit with status 1.
+Statistics-only mode streams the word instead of retaining it. Exact coverage uses one bit per required permutation: roughly 4.8 MiB at N=11, 57.1 MiB at N=12, 742.3 MiB at N=13, and 10.2 GiB at N=14, plus small input buffers. Allocation or input failures exit with status 1. Clean windows are indexed by rotation class and the position of symbol zero; the class is ranked once per clean run, then successive rotations update the index in constant time. Coverage remains exact.
 
 ```sh
 # Same valid N=3 word relabeled from 123 to 012.

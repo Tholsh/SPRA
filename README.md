@@ -14,6 +14,9 @@ Use Linux-installed GCC and utilities. See [setup and validation](docs/tools.md#
 for dependencies and VS Code configuration. From the repository root, run
 `make -j2` to build every program and `make test` to run the regression suites.
 
+The experimental [tuple recipe tooling](recipes/README.md) stores finite Kleene
+expressions and streams SPRA output, including an N=14 import and benchmarks.
+
 ## Corpus
 
 [`words/`](words/) groups words by alphabet size, from `5` through `14`, then by word length: `words/N/LENGTH/`. For example, the recursive N=5 word is [`words/5/153/153-recursive.txt`](words/5/153/153-recursive.txt). Through **N=9**, every `.txt` file contains exactly one superpermutation, using one-based labels `123…N`. This is also where Collections retain their own folders inside the length folder, such as `words/6/872/872-treelike/872-00001.txt` (length and source ordinal). Existing individual word filenames are retained. Repeated occurrences from different sources are preserved.
@@ -69,7 +72,7 @@ For example, `123121321` becomes `012010210` and converts back exactly. Folder c
 
 ## Paint waste
 
-[`tools/paint_waste.cpp`](tools/paint_waste.cpp) builds the `paint-waste` tool. It reads a word from standard input, ignores whitespace, and supports `1 <= N <= 13` on a 64-bit platform. Its default labels are `123456789ABCD`; `-z` / `--zero-based` selects `0123456789ABC`. Use the first N characters of the selected alphabet, with uppercase letters.
+[`tools/paint_waste.cpp`](tools/paint_waste.cpp) builds the `paint-waste` tool. It reads a word from standard input, ignores whitespace, and supports `1 <= N <= 14` on a 64-bit platform. Its default labels are `123456789ABCDE`; `-z` / `--zero-based` selects `0123456789ABCD`. Use the first N characters of the selected alphabet, with uppercase letters.
 
 For each length-`N` window, it marks the final character red if the window contains repeated symbols. It prints the colored word, reduced-alphabet `[depth:offset]` pairs (in decimal, with signed offsets), and then decimal statistics to stdout. Statistics include length, clean/dirty windows and runs, distinct/missing permutations, and binary `valid_superpermutation` coverage. Use `-s` to print only statistics. See the [full run guide and field definitions](docs/paint_waste.md).
 
@@ -111,7 +114,7 @@ For the zero-based version of the same valid word:
 printf '%s\n' '012010210' | ./build/paint-waste -z -s 3
 ```
 
-Above N=9, the tool always uses statistics-only output. Without `-s`, it asks for confirmation through the terminal; explicit `-s` accepts that mode without prompting. If no terminal is available, rerun with `-s`. Large words are streamed; exact coverage at N=13 needs about 742 MiB of RAM. See the [full run guide](docs/paint_waste.md) for alphabet and confirmation details.
+Above N=9, the tool always uses statistics-only output. Without `-s`, it asks for confirmation through the terminal; explicit `-s` accepts that mode without prompting. If no terminal is available, rerun with `-s`. Large words are streamed; exact coverage needs about 742 MiB at N=13 or 10.2 GiB at N=14. See the [full run guide](docs/paint_waste.md) for alphabet and confirmation details.
 
 To use an xz word directly through stdin, without extracting it first (POSIX shell):
 

@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "spra_word_state.h"
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -236,42 +237,7 @@ public:
 
 // A six-bit reference reaches at most N+32 symbols into the past. The longest
 // distinct suffix detects clean windows without an N!-sized coverage bitmap.
-class WordState {
-    unsigned n_;
-    unsigned suffix_ = 0;
-    std::array<Byte, MAX_N + MAX_OFFSET_REACH> history_{};
-    std::array<Count, MAX_N> last_{};
-public:
-    Count length = 0;
-    explicit WordState(unsigned n) : n_(n) {}
-    Count previous(Byte symbol) const { return last_[symbol]; }
-    bool clean() const { return length >= n_ && suffix_ == n_; }
-    void append(Byte symbol) {
-        if (length == std::numeric_limits<Count>::max()) fail("word exceeds uint64 length");
-        const Count position = length + 1;
-        const Count distance = last_[symbol] ? position - last_[symbol] : position;
-        suffix_ = static_cast<unsigned>(std::min<Count>({n_, suffix_ + 1, distance}));
-        history_[length % history_.size()] = symbol;
-        last_[symbol] = position;
-        length = position;
-    }
-    Byte back(unsigned distance) const {
-        if (distance == 0 || distance > length || distance > history_.size())
-            fail("copy reference precedes available history at symbol " + std::to_string(length + 1));
-        return history_[(length - distance) % history_.size()];
-    }
-    Byte next_clean() const {
-        // Once a window is clean, further clean steps are distance-N copies.
-        if (clean()) return back(n_);
-        if (suffix_ < n_ - 1) fail("clean run follows a repeated suffix at symbol " + std::to_string(length + 1));
-        std::uint32_t used = 0;
-        for (unsigned distance = 1; distance < n_; ++distance)
-            used |= std::uint32_t{1} << back(distance);
-        for (unsigned symbol = 0; symbol < n_; ++symbol)
-            if (!(used & (std::uint32_t{1} << symbol))) return static_cast<Byte>(symbol);
-        fail("clean window has no missing symbol");
-    }
-};
+using WordState = spra::WordState;
 
 bool whitespace(int c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
