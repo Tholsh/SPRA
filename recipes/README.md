@@ -42,6 +42,16 @@ The importer normalizes a distinct source seed to identity by relabeling;
 tuple depths and offsets are unchanged. A repeated-symbol source seed cannot
 be normalized this way and is refused. Other gauges are not stored in recipes.
 
+Large recipes can explicitly raise [resource limits](KLEENE.md#execution-and-canonical-output):
+
+```sh
+bash recipes/kleene.sh audit --max-nodes 3000000 /path/to/n15_1401325415364.kl.xz
+```
+
+Use the same options with `emit` to enumerate the complete SPRA stream.
+`--max-edges`, `--max-source-bytes` and `--max-nesting` are also available.
+These settings raise loading budgets; they do not limit the output to a prefix.
+
 ```sh
 make -C recipes test
 bash recipes/benchmark.sh 5 build/n5.spra.xz build/recipes/benchmark-n5 --paint

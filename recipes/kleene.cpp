@@ -19,7 +19,10 @@ using Id = uint32_t;
 [[noreturn]] void fail(const std::string& s) { throw std::runtime_error(s); }
 U add(U a, U b) { if (b > UINT64_MAX-a) fail("count overflow"); return a+b; }
 U mul(U a, U b) { if (b && a > UINT64_MAX/b) fail("count overflow"); return a*b; }
-constexpr size_t MAX_NODES=2000000, MAX_EDGES=32000000;
+struct Limits {
+    size_t max_nodes=2000000, max_edges=32000000;
+    size_t max_source_bytes=256u*1024u*1024u, max_nesting=256;
+};
 struct Input {
     std::array<unsigned char,65536> b{}; size_t pos=0, end=0;
     int get() {
@@ -54,16 +57,19 @@ struct Node {
 };
 U mix(U x) { x^=x>>30; x*=0xbf58476d1ce4e5b9ULL; x^=x>>27; x*=0x94d049bb133111ebULL; return x^(x>>31); }
 struct Grammar {
+    Limits limits;
     std::vector<Node> nodes;
     std::unordered_map<U,std::vector<Id>> index;
     size_t edges=0;
+    explicit Grammar(const Limits &options={}):limits(options) {}
     Id intern(Node node) {
         U hash=mix(unsigned(node.kind)^mix(node.depth)^mix(U(node.offset+64))^mix(node.count));
         for(Id c:node.children) hash=mix(hash^mix(c+1));
         auto &bucket=index[hash];
         for(Id id:bucket) { auto &a=nodes[id];
             if(a.kind==node.kind && a.depth==node.depth && a.offset==node.offset && a.count==node.count && a.children==node.children) return id; }
-        if(nodes.size()>=MAX_NODES || node.children.size()>MAX_EDGES-edges) fail("grammar budget exceeded");
+        if(nodes.size()>=limits.max_nodes) fail("--max-nodes limit exceeded ("+std::to_string(limits.max_nodes)+"); increase --max-nodes");
+        if(node.children.size()>limits.max_edges-edges) fail("--max-edges limit exceeded ("+std::to_string(limits.max_edges)+"); increase --max-edges");
         Id id=static_cast<Id>(nodes.size()); edges+=node.children.size(); nodes.push_back(std::move(node)); bucket.push_back(id); return id;
     }
     Id atom(unsigned d,int o) { Node x; x.depth=d; x.offset=o; return intern(std::move(x)); }
@@ -157,14 +163,14 @@ struct Phrases {
 };
 
 void write_kl(const Header &h,const Grammar &g,Id root);
-void compile() {
+void compile(const Limits &limits) {
     Input input; Header h;
     for(unsigned i=0;i<24;++i) h.data.push_back(static_cast<unsigned char>(input.byte()));
     // Validate fixed fields before trusting N or allocating seed storage.
     if(h.data[7]<1 || h.data[7]>32) fail("invalid N");
     U length=0; for(unsigned i=0;i<8;++i) length|=U(h.data[8+i])<<(8*i);
     for(U i=0;i<std::min<U>(length,h.data[7]-1);++i) h.data.push_back(static_cast<unsigned char>(input.byte()));
-    h.check(); Grammar grammar; Builder builder(grammar); Phrases phrases(grammar,builder);
+    h.check(); Grammar grammar(limits); Builder builder(grammar); Phrases phrases(grammar,builder);
     if(!h.tuples) { if(input.get()!=EOF) fail("extra SPRA bytes"); Node empty; empty.kind='c'; empty.length=0; Id root=grammar.intern(empty); write_kl(h,grammar,root); return; }
     unsigned pending=0,bits=0,mask=(1u<<h.bits)-1; U expanded=0,run=0; unsigned prev=0; bool have=false;
     auto flush=[&] { if(run) phrases.push(grammar.repeat(grammar.atom(prev>>h.bits, int(prev&mask)<int(1u<<(h.bits-1))?int(prev&mask):int(prev&mask)-int(1u<<h.bits)),run)); run=0; };
@@ -261,17 +267,54 @@ void audit(const Header &h,const Grammar &g,Id root) {
              <<",\"tuple_clean_steps\":"<<x.clean<<",\"trailing_clean_steps\":"<<h.length-covered<<",\"runs\":"<<x.runs
              <<",\"physical_tokens\":"<<x.tokens<<",\"spra_bytes\":"<<bytes<<",\"rules\":"<<g.nodes.size()<<",\"edges\":"<<g.edges<<"}\n";
 }
+void usage(std::ostream &out) {
+    out<<"usage: kleene [LIMITS] compile < input.spra > output.kl\n"
+          "       kleene [LIMITS] emit|info|audit FILE.kl|-\n"
+          "LIMITS (positive decimal counts; may appear before or after the command):\n"
+          "  --max-nodes COUNT         expression nodes and named definitions (default 2000000)\n"
+          "  --max-edges COUNT         expression child references (default 32000000)\n"
+          "  --max-source-bytes COUNT  decompressed .kl bytes (default 268435456)\n"
+          "  --max-nesting COUNT       expression/comment nesting (default 256)\n"
+          "These limits do not truncate output or change recipe semantics.\n";
+}
 int main(int argc,char **argv) try {
-    if(argc==2 && std::string(argv[1])=="compile") { compile(); return 0; }
-    if(argc==3 && (std::string(argv[1])=="emit" || std::string(argv[1])=="info" || std::string(argv[1])=="audit")) {
+    Limits limits;
+    std::vector<std::string> positional;
+    bool options=true;
+    for(int i=1;i<argc;++i) {
+        std::string arg=argv[i];
+        if(options && arg=="--") { options=false; continue; }
+        if(options && arg=="--help") { usage(std::cout); return 0; }
+        if(options && arg.starts_with("--")) {
+            size_t equal=arg.find('=');
+            std::string name=arg.substr(0,equal), value;
+            size_t *target=nullptr;
+            if(name=="--max-nodes") target=&limits.max_nodes;
+            else if(name=="--max-edges") target=&limits.max_edges;
+            else if(name=="--max-source-bytes") target=&limits.max_source_bytes;
+            else if(name=="--max-nesting") target=&limits.max_nesting;
+            else fail("unknown option "+name);
+            if(equal!=std::string::npos) value=arg.substr(equal+1);
+            else if(i+1<argc) value=argv[++i];
+            else fail("missing count for "+name);
+            U count=0; auto [end,ec]=std::from_chars(value.data(),value.data()+value.size(),count);
+            if(value.empty()||ec!=std::errc{}||end!=value.data()+value.size()||!count||count>std::numeric_limits<size_t>::max())
+                fail(name+" requires a positive decimal count that fits size_t");
+            if(name=="--max-nodes" && count>std::numeric_limits<Id>::max()) fail("--max-nodes exceeds the 32-bit node ID range");
+            *target=size_t(count);
+        } else positional.push_back(std::move(arg));
+    }
+    if(positional.size()==1 && positional[0]=="compile") { compile(limits); return 0; }
+    if(positional.size()==2 && (positional[0]=="emit" || positional[0]=="info" || positional[0]=="audit")) {
+        const std::string &command=positional[0], &path=positional[1];
         std::ifstream file;
-        if(std::string(argv[2])!="-") { file.open(argv[2]); if(!file) fail("cannot open recipe"); }
-        std::istream &source=std::string(argv[2])=="-"?std::cin:file; Id root=0;
-        auto [h,g]=KlSource(source).read(root);
-        if(std::string(argv[1])=="emit") emit(h,g,root);
-        else if(std::string(argv[1])=="audit") audit(h,g,root);
+        if(path!="-") { file.open(path); if(!file) fail("cannot open recipe"); }
+        std::istream &source=path=="-"?std::cin:file; Id root=0;
+        auto [h,g]=KlSource(source,limits).read(root);
+        if(command=="emit") emit(h,g,root);
+        else if(command=="audit") audit(h,g,root);
         else std::cout<<"{\"n\":"<<h.n<<",\"bits\":"<<h.bits<<",\"symbols\":"<<h.length<<",\"logical_tuples\":"<<h.tuples<<",\"rules\":"<<g.nodes.size()<<",\"edges\":"<<g.edges<<",\"root\":"<<root<<"}\n";
         return 0;
     }
-    fail("usage: kleene compile < input.spra > output.kl | kleene emit|info|audit FILE.kl");
+    usage(std::cerr); return 1;
 } catch(const std::exception &e) { std::cerr<<"kleene: "<<e.what()<<'\n'; return 1; }

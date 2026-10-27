@@ -10,3 +10,4 @@ $(BUILD)/kleene: kleene.cpp kleene_source.h ../tools/spra_word_state.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $< $(LDFLAGS) $(LDLIBS) -o $@
 test: all
 	bash tests/test_kl_source.sh
+	bash tests/test_limits.sh

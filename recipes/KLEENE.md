@@ -100,10 +100,36 @@ superpermutation coverage; use strict decoding into the raw-stream checker.
 Late errors, including corrupt xz input, may follow partial output. Nonzero
 pipeline status invalidates that output. Diagnostics go to stderr.
 
-The current implementation caps source at 256 MiB, expressions at two million
-nodes, child references at 32 million, and expression/comment nesting at 256.
-These are runner resource limits. A recipe outside them is refused rather
-than silently interpreted differently.
+The runner has configurable resource limits. Defaults remain:
+
+| Option | Default | Counts |
+| --- | ---: | --- |
+| `--max-nodes` | 2,000,000 | Interned expression nodes and, separately, named definitions |
+| `--max-edges` | 32,000,000 | Stored child references |
+| `--max-source-bytes` | 268,435,456 | Decompressed source bytes |
+| `--max-nesting` | 256 | Expression and block-comment nesting |
+
+Pass positive decimal counts to the executable or wrapper, before or after
+the command/file. Both `--max-nodes 3000000` and `--max-nodes=3000000` work.
+Limits apply to `compile`, `emit`, `info` and `audit` where relevant. They are
+execution settings, not source metadata, and do not change the profile or
+truncate the emitted stream. Node limits must fit the 32-bit node ID range;
+counts must fit the platform's `size_t`. Count-overflow checks, tuple field
+ranges and semantic validity checks remain enforced regardless of budgets.
+
+For example, the N=15 recipe `n15_1401325415364.kl.xz` needs 2,415,398 nodes
+and 18,723,756 references, so only the node default needs increasing:
+
+```sh
+bash recipes/kleene.sh audit --max-nodes 3000000 /path/to/n15_1401325415364.kl.xz
+bash recipes/kleene.sh emit --max-nodes 3000000 /path/to/n15_1401325415364.kl.xz |
+  ./build/reduced_codec decode --strict > /dev/null
+```
+
+The second command executes the complete recipe. It is separate from the
+algebraic audit and from a coverage check. This recipe declares 1,401,325,415,364
+symbols and 93,415,981,750 tuples. It requires neither an N extension nor a
+change to SPRA's 64-bit header counts.
 
 ## Provenance and conformance
 

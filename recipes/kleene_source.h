@@ -5,18 +5,20 @@
 
 struct KlSource {
     std::istream &in;
+    Limits limits;
     std::string token;
     std::unordered_map<std::string,std::string> metadata;
     std::unordered_map<std::string,Id> names;
     Grammar grammar;
     size_t consumed=0, line=1;
     bool code=false;
-    explicit KlSource(std::istream &source):in(source) {}
+    explicit KlSource(std::istream &source,const Limits &options={}):in(source),limits(options),grammar(options) {}
     [[noreturn]] void error(const std::string &s) { fail("Kleene line "+std::to_string(line)+": "+s); }
     int take() {
         int c=in.get();
         if(c==EOF) { if(in.bad()) error("input read failed"); return c; }
-        if(++consumed>256u*1024u*1024u) error("source exceeds 256 MiB budget");
+        if(consumed==limits.max_source_bytes) error("--max-source-bytes limit exceeded ("+std::to_string(limits.max_source_bytes)+"); increase --max-source-bytes");
+        ++consumed;
         if(c=='\n') ++line;
         return c;
     }
@@ -46,10 +48,10 @@ struct KlSource {
                 }
                 comment(text);
             } else if(c=='*') {
-                unsigned nesting=1;
+                size_t nesting=1;
                 while(nesting) {
                     c=take(); if(c==EOF) error("unterminated block comment");
-                    if(c=='/' && in.peek()=='*') { take(); if(++nesting>256) error("comment nesting exceeds budget"); }
+                    if(c=='/' && in.peek()=='*') { take(); if(nesting==limits.max_nesting) error("--max-nesting limit exceeded in block comment"); ++nesting; }
                     else if(c=='*' && in.peek()=='/') { take(); --nesting; }
                 }
             } else error("unsupported syntax; expected a comment after /");
@@ -111,8 +113,8 @@ struct KlSource {
         if(offset.empty()||ec!=std::errc{}||end!=offset.data()+offset.size()||depth>63||o < -32||o>31||o>=int(n)||(depth&&o==0)) error("tuple outside SPRA logical field ranges");
         Id id=grammar.atom(unsigned(depth),o); next(); return id;
     }
-    Id expression(unsigned nesting=0) {
-        if(nesting>256) error("expression nesting exceeds budget");
+    Id expression(size_t nesting=0) {
+        if(nesting>limits.max_nesting) error("--max-nesting limit exceeded in expression");
         if(!primary()) error("expected tuple, variable, parentheses or _e_");
         Builder builder(grammar);
         bool nonempty=false;
@@ -142,7 +144,7 @@ struct KlSource {
             if(token[0]!='$') error("only network assignments are supported in the finite singleton profile");
             std::string name=token;
             if(names.contains(name)) error("network reassignment is outside this profile");
-            if(names.size()>=MAX_NODES) error("definition budget exceeded");
+            if(names.size()>=limits.max_nodes) error("definition count exceeds --max-nodes ("+std::to_string(limits.max_nodes)+"); increase --max-nodes");
             next(); expect("="); Id id=expression(); expect(";"); names.emplace(name,id);
             if(name=="$word") { found=true; root=id; }
         }
