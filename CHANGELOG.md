@@ -4,9 +4,38 @@ Draft for review. Versions identify software releases; the SPRA wire format
 remains 0.2. V0.1 predates this repository's recorded history; its entry is
 limited to the legacy-format documentation and published comparisons.
 
+## 0.2.2 — Unreleased (draft)
+
+Changes since `v0.2.1`. OpenCL checker pending.
+
+- Added the SPRA Kleene recipe profile: `.kl.xz` source, tuple atoms,
+  concatenation and counted repetition; one-based labels, identity seed,
+  and `version`, `n`, and `length` comment metadata.
+- Added one recipe wrapper for mining, streaming SPRA emission, metadata,
+  and algebraic audits of tuple counts, run boundaries, and packed size.
+  Execution retains shared expressions instead of expanding the whole word.
+- Added automatic four-/six-bit field selection and canonical SPRA RLE/packing.
+  Shared bounded symbol history checks tuple validity; nearest-copy conformance
+  remains with `decode --strict`.
+- Imported Halfar's N=14 word as a self-contained, 5,939,740-byte Kleene recipe,
+  relabeled to the profile's identity seed.
+- Added configurable node, reference, source-byte, and nesting limits,
+  enabling larger recipes including N=15; retained tuple and overflow checks.
+- Extended paint-waste exact coverage to N=14 (about 10.2 GiB bitmap RAM);
+  accelerated rolling history and clean-run indexing by rotation class.
+- Added recipe benchmarks and regression checks for metadata, expression
+  semantics, gauge normalization, strict corpus round trips, malformed input,
+  compressed/stdin pipelines, and resource overrides; included them in `make test`.
+- Standardized large-word checks on streaming/audits rather than saved or
+  hashed expanded files for N>=13.
+
+Validation: `make test` passed. The supplied N=15 recipe passed its algebraic
+audit and a 4,194,304-symbol strict-decoding prefix check; full N=15 coverage
+has not been checked. SPRA remains wire format 0.2.
+
 ## 0.2.1 — 2026-10-25
 
-Tag: `v0.2.1` (`7e861e1`). Changes since `v0.2.0`:
+Tag: `v0.2.1` (`833c24d`). Changes since `v0.2.0`:
 
 - Integrated Jakub Halfar's codec fixes (PR #1): decode limits with
   `--max-symbols`, canonical decoding with `--strict`, and automatic six-bit fallback.
