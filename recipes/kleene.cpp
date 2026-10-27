@@ -13,6 +13,10 @@
 #include <unordered_map>
 #include <vector>
 #include "../tools/spra_word_state.h"
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 using U = uint64_t;
 using Id = uint32_t;
@@ -277,14 +281,20 @@ void usage(std::ostream &out) {
           "  --max-nesting COUNT       expression/comment nesting (default 256)\n"
           "These limits do not truncate output or change recipe semantics.\n";
 }
-int main(int argc,char **argv) try {
+struct Arguments {
     Limits limits;
     std::vector<std::string> positional;
+    bool help=false;
+};
+Arguments parse_arguments(int argc,char **argv) {
+    Arguments result;
+    auto &limits=result.limits;
+    auto &positional=result.positional;
     bool options=true;
     for(int i=1;i<argc;++i) {
         std::string arg=argv[i];
         if(options && arg=="--") { options=false; continue; }
-        if(options && arg=="--help") { usage(std::cout); return 0; }
+        if(options && arg=="--help") { result.help=true; continue; }
         if(options && arg.starts_with("--")) {
             size_t equal=arg.find('=');
             std::string name=arg.substr(0,equal), value;
@@ -304,6 +314,17 @@ int main(int argc,char **argv) try {
             *target=size_t(count);
         } else positional.push_back(std::move(arg));
     }
+    return result;
+}
+int main(int argc,char **argv) try {
+#ifdef _WIN32
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+    auto args=parse_arguments(argc,argv);
+    const auto &limits=args.limits;
+    const auto &positional=args.positional;
+    if(args.help) { usage(std::cout); return 0; }
     if(positional.size()==1 && positional[0]=="compile") { compile(limits); return 0; }
     if(positional.size()==2 && (positional[0]=="emit" || positional[0]=="info" || positional[0]=="audit")) {
         const std::string &command=positional[0], &path=positional[1];
