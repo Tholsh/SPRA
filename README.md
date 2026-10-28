@@ -127,7 +127,7 @@ xz -d < word-n5.txt.xz | ./build/paint-waste 5
 `-dc` decompresses to stdout and preserves the archive. To validate the current one-based N=11 SPRA archive, decode it before passing the word to paint-waste:
 
 ```sh
-bash tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz | ./build/paint-waste -s 11
+./tools/spra-xz.sh decode words/11/43930624/superpermutation-11-43930624.spra.xz | ./build/paint-waste -s 11
 ```
 # Improvement from V0.1
 
